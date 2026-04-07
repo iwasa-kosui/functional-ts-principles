@@ -1,6 +1,6 @@
 # option-t
 
-## 基本API
+## Basic API
 
 ```typescript
 import { createOk, createErr, isOk, isErr, unwrapOk } from "option-t/plain_result";
@@ -11,26 +11,26 @@ import { mapErrForResult } from "option-t/plain_result/map_err";
 import { orElseForResult } from "option-t/plain_result/or_else";
 ```
 
-または名前空間import:
+Or using namespace import:
 
 ```typescript
 import { Result } from "option-t/plain_result/namespace";
 // Result.createOk, Result.map, Result.andThen, etc.
 ```
 
-| 関数/型 | 説明 |
+| Function/Type | Description |
 |---------|------|
-| `Result<T, E>` | Result型（`Ok<T> \| Err<E>` の判別共用体、プレーンオブジェクト） |
-| `createOk(value)` | 成功値を生成（`{ ok: true, val: T, err: null }`） |
-| `createErr(error)` | 失敗値を生成（`{ ok: false, val: null, err: E }`） |
+| `Result<T, E>` | Result type (`Ok<T> \| Err<E>` discriminated union, plain object) |
+| `createOk(value)` | Creates a success value (`{ ok: true, val: T, err: null }`) |
+| `createErr(error)` | Creates a failure value (`{ ok: false, val: null, err: E }`) |
 
-neverthrowとの主な違い:
+Main differences from neverthrow:
 
-- クラスではなくプレーンオブジェクト（discriminantは `ok` フィールド）
-- メソッドチェーンではなくスタンドアロン関数で合成
-- 非同期は `*Async` バリアント関数を使用（戻り値は `Promise<Result<T, E>>`）
+- Plain objects instead of classes (discriminant is the `ok` field)
+- Composition via standalone functions instead of method chaining
+- Async operations use `*Async` variant functions (return value is `Promise<Result<T, E>>`)
 
-## 関数による合成
+## Composition with Functions
 
 ```typescript
 import { mapForResult } from "option-t/plain_result/map";
@@ -43,7 +43,7 @@ const mappedErr = mapErrForResult(result, (error) => transformErr(error));
 const chained = andThenForResult(result, (value) => nextResult(value));
 const recovered = orElseForResult(result, (error) => recover(error));
 
-// 分岐は型ガードまたはokフィールドで判定
+// Branching uses type guards or the ok field
 if (isOk(result)) {
   console.log(result.val);
 } else {
@@ -51,7 +51,7 @@ if (isOk(result)) {
 }
 ```
 
-## コード例: ドメインイベントの記録
+## Code Example: Recording Domain Events
 
 ```typescript
 import { createOk, createErr, isOk, isErr, type Result } from "option-t/plain_result";

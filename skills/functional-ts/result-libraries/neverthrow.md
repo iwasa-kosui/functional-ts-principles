@@ -1,37 +1,37 @@
 # neverthrow
 
-## 基本API
+## Basic API
 
 ```typescript
 import { ok, err, Result, ResultAsync } from "neverthrow";
 ```
 
-| 関数/型 | 説明 |
+| Function/Type | Description |
 |---------|------|
-| `Result<T, E>` | 同期Result型 |
-| `ResultAsync<T, E>` | 非同期Result型（Promise<Result>のラッパー） |
-| `ok(value)` | 成功値を生成 |
-| `err(error)` | 失敗値を生成 |
-| `.andThrough(fn)` | 副作用を実行し、成功なら元の値を維持して返す |
+| `Result<T, E>` | Synchronous Result type |
+| `ResultAsync<T, E>` | Asynchronous Result type (wrapper around Promise<Result>) |
+| `ok(value)` | Creates a success value |
+| `err(error)` | Creates a failure value |
+| `.andThrough(fn)` | Executes a side effect and returns the original value on success |
 
-## チェーンメソッド
+## Chaining Methods
 
 ```typescript
 result
-  .map((value) => transform(value))         // 成功値を変換
-  .mapErr((error) => transformErr(error))    // エラー値を変換
-  .andThen((value) => nextResult(value))     // 成功値から次のResultへ（flatMap）
-  .andThrough((value) => sideEffect(value))  // 副作用を実行し、成功なら元の値を維持
-  .orElse((error) => recover(error))         // エラーから回復
+  .map((value) => transform(value))         // Transform the success value
+  .mapErr((error) => transformErr(error))    // Transform the error value
+  .andThen((value) => nextResult(value))     // Chain to the next Result from a success value (flatMap)
+  .andThrough((value) => sideEffect(value))  // Execute a side effect and return the original value on success
+  .orElse((error) => recover(error))         // Recover from an error
   .match(
     (value) => handleOk(value),
     (error) => handleErr(error),
   );
 ```
 
-## コード例: ドメインイベントの記録
+## Code Example: Recording Domain Events
 
-Railway Oriented Programmingの原則に従い、各処理を独立した関数に切り出し、ユースケースはメソッドチェーンでそれらを合成するだけにする。`andThrough` で副作用を挟みつつ元の値を維持する。
+Following Railway Oriented Programming principles, extract each step into an independent function, and let the use case simply compose them with method chaining. Use `andThrough` to run side effects while preserving the original value.
 
 ```typescript
 import { ok, err, Result, ResultAsync } from "neverthrow";
@@ -144,7 +144,7 @@ const publishEvent =
   (event: DriverAssignedEvent): ResultAsync<void, AssignDriverError> =>
     eventStore.save(event);
 
-// --- Use Case (andThrough によるパイプライン合成) ---
+// --- Use Case (pipeline composition with andThrough) ---
 
 const assignDriverUseCase =
   (requestRepo: RequestRepository, eventStore: EventStore) =>

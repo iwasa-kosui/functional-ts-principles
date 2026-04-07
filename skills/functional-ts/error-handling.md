@@ -1,12 +1,12 @@
-# エラーハンドリング詳細ガイド
+# Error Handling Detailed Guide
 
 ## Railway Oriented Programming
 
-Result型を使い、成功と失敗を型で表現する。例外のthrowはドメイン層では使わない。ライブラリ固有のAPIについては [result-libraries/](./result-libraries/) 内の該当ガイドを参照。
+Use Result types to represent success and failure in the type system. Do not throw exceptions in the domain layer. For library-specific APIs, refer to the corresponding guide in [result-libraries/](./result-libraries/).
 
-## エラー型の設計
+## Error Type Design
 
-エラーもDiscriminated Unionで定義し、呼び出し元が網羅的にハンドルできるようにする。
+Define errors as Discriminated Unions so that callers can handle them exhaustively.
 
 ```typescript
 type AssignDriverError =
@@ -15,34 +15,34 @@ type AssignDriverError =
   | Readonly<{ kind: "DriverNotAvailable"; driverId: DriverId }>;
 ```
 
-### エラー型の粒度
+### Error Type Granularity
 
-各ユースケースが返すエラー型は、そのユースケース固有のものにする。共通のエラー型（`AppError`）にすべてを詰め込むと、呼び出し元が「実際にはどのエラーが起こりうるか」を型から判断できなくなる。
+The error type returned by each use case should be specific to that use case. Stuffing everything into a common error type (`AppError`) makes it impossible for callers to determine from the type which errors can actually occur.
 
 ```typescript
-// Good: ユースケース固有のエラー型
+// Good: use case-specific error types
 type AssignDriverError = RequestNotFoundError | InvalidStateError | DriverNotAvailableError;
 type StartTripError = RequestNotFoundError | InvalidStateError;
 
-// Bad: 全エラーを1つに詰め込む
+// Bad: stuffing all errors into one type
 type AppError = RequestNotFoundError | InvalidStateError | DriverNotAvailableError | ...;
 ```
 
-## 処理の合成
+## Composing Operations
 
-各ステップがResult型を返し、エラーが発生した時点で後続のステップはスキップされる。合成のAPIはライブラリごとに異なる（neverthrow/byethrowでは `.andThen()`、fp-tsでは `pipe` + `chain`、option-tでは `flatMapForResult`）。
+Each step returns a Result type, and if an error occurs, subsequent steps are skipped. The composition API differs by library (neverthrow/byethrow use `.andThen()`, fp-ts uses `pipe` + `chain`, option-t uses `flatMapForResult`).
 
-### ヘルパー関数
+### Helper Functions
 
-共通のバリデーションは小さな関数に切り出し、合成の各ステップとして使う。
+Extract common validation into small functions and use them as composition steps.
 
 ```typescript
-// ヘルパーの戻り値はResult型。具体的なAPI（ok/err, right/left等）はライブラリに依存
+// Helper return values are Result types. The specific API (ok/err, right/left, etc.) depends on the library
 const ensureFound = <T>(id: RequestId) => (
   value: T | undefined,
 ): Result<T, RequestNotFoundError> =>
   value !== undefined
-    ? success(value)   // ok(), right(), createOk() 等
+    ? success(value)   // ok(), right(), createOk(), etc.
     : failure({ kind: "RequestNotFound", requestId: id });
 
 const ensureWaiting = (
@@ -53,9 +53,9 @@ const ensureWaiting = (
     : failure({ kind: "InvalidState", currentKind: request.kind, expectedKind: "Waiting" });
 ```
 
-## Controller層でのエラー変換
+## Error Conversion in the Controller Layer
 
-ドメインエラーをHTTPレスポンスに変換するのはController層の責務。ドメインエラーのkindに基づいてステータスコードを決定する。
+Converting domain errors to HTTP responses is the responsibility of the Controller layer. Determine the status code based on the domain error's `kind`.
 
 ```typescript
 const toHttpResponse = (error: AssignDriverError): Response => {
@@ -72,9 +72,9 @@ const toHttpResponse = (error: AssignDriverError): Response => {
 };
 ```
 
-## 例外を使うべき場所
+## Where Exceptions Are Appropriate
 
-ドメイン層では例外をスローしないが、以下の場所では例外が適切:
+Do not throw exceptions in the domain layer, but exceptions are appropriate in these places:
 
-- `assertNever`: 到達不能コードの検出（プログラムのバグ）
-- インフラ層の予期しない障害（DB接続断など）— これはフレームワークのエラーハンドラに任せる
+- `assertNever`: detecting unreachable code (programming bugs)
+- Unexpected infrastructure failures (e.g., DB connection loss) — delegate these to the framework's error handler

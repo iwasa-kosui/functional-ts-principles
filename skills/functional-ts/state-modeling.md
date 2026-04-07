@@ -1,17 +1,17 @@
-# 状態モデリング詳細ガイド
+# State Modeling Detailed Guide
 
-## Discriminated Unionによる状態遷移の設計
+## Designing State Transitions with Discriminated Unions
 
-### 設計手順
+### Design Steps
 
-1. ドメインエンティティが取りうる状態を列挙する
-2. 各状態で必要なプロパティを特定する
-3. 状態ごとに個別の型を定義する（`kind` をdiscriminant）
-4. Union型でまとめる
-5. 有効な遷移を純粋関数として定義する
-6. Companion Objectに関数をまとめる
+1. Enumerate the possible states of the domain entity
+2. Identify the properties needed in each state
+3. Define a separate type for each state (using `kind` as the discriminant)
+4. Combine them into a Union type
+5. Define valid transitions as pure functions
+6. Group functions into a Companion Object
 
-### 状態遷移図からコードへ
+### From State Diagram to Code
 
 ```
 Waiting → EnRoute → InTrip → Completed
@@ -19,10 +19,10 @@ Waiting → EnRoute → InTrip → Completed
 Cancelled Cancelled Cancelled
 ```
 
-この遷移図は以下のように型と関数に変換される。
+This state diagram translates into types and functions as follows.
 
 ```typescript
-// 1. 各状態の型
+// 1. Types for each state
 type Waiting = Readonly<{
   kind: "Waiting";
   requestId: RequestId;
@@ -63,13 +63,13 @@ type Cancelled = Readonly<{
   reason: string;
 }>;
 
-// 2. Union型
+// 2. Union type
 type TaxiRequest = Waiting | EnRoute | InTrip | Completed | Cancelled;
 
-// 3. Cancellable な状態のUnion（部分的なUnionも活用する）
+// 3. Union of cancellable states (partial unions are also useful)
 type CancellableRequest = Waiting | EnRoute | InTrip;
 
-// 4. 遷移関数
+// 4. Transition functions
 const TaxiRequest = {
   assignDriver: (waiting: Waiting, driverId: DriverId, now: Date): EnRoute => ({
     kind: "EnRoute",
@@ -111,15 +111,15 @@ const TaxiRequest = {
 } as const;
 ```
 
-### 注意点
+### Notes
 
-**共通プロパティの扱い:** `requestId` や `passengerId` のように全状態に共通するプロパティがあっても、base typeを `extends` で継承するのは避ける。`interface` の継承は前述のdeclaration merging問題を持ち込む。各状態で明示的にプロパティを定義する冗長さは、型安全性とのトレードオフとして受け入れる。
+**Handling shared properties:** Even when properties like `requestId` or `passengerId` are common to all states, avoid inheriting from a base type via `extends`. Interface inheritance introduces declaration merging issues mentioned earlier. Accept the redundancy of explicitly defining properties in each state as a trade-off for type safety.
 
-**日時の生成:** 上記例では日時を引数として受け取る設計にしている。これによりテストで任意の時刻を注入でき、テスタビリティが確保される。
+**Generating timestamps:** The example above accepts timestamps as arguments. This allows injecting arbitrary timestamps in tests, ensuring testability.
 
-## ドメインイベント
+## Domain Events
 
-状態遷移に伴うビジネス上の出来事をドメインイベントとして記録する。イベントはリポジトリとは別のストアに保存する。
+Record business-significant occurrences that accompany state transitions as domain events. Events are stored in a separate store from the repository.
 
 ```typescript
 type DomainEvent<TName extends string, TPayload> = Readonly<{
@@ -142,9 +142,9 @@ type TripCompletedEvent = DomainEvent<
 >;
 ```
 
-### イベント生成の責務
+### Event Generation Responsibility
 
-ユースケース層がイベントを生成し、リポジトリにはエンティティとイベントを別々に渡す。リポジトリがイベントを生成する設計は責務が肥大化する。
+The use case layer generates events and passes the entity and events separately to the repository. Having the repository generate events inflates its responsibilities.
 
 ```typescript
 const assignDriverUseCase = (

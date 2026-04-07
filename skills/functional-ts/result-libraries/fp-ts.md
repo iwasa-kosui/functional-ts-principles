@@ -1,6 +1,6 @@
 # fp-ts
 
-## 基本API
+## Basic API
 
 ```typescript
 import * as E from "fp-ts/Either";
@@ -8,47 +8,47 @@ import * as TE from "fp-ts/TaskEither";
 import { pipe } from "fp-ts/function";
 ```
 
-| 関数/型 | 説明 |
+| Function/Type | Description |
 |---------|------|
-| `Either<E, A>` | 同期Result型。エラーが第1型引数（Left）、成功が第2型引数（Right） |
-| `TaskEither<E, A>` | 非同期Result型（`() => Promise<Either<E, A>>`） |
-| `E.right(value)` | 成功値を生成 |
-| `E.left(error)` | 失敗値を生成 |
-| `TE.Do` | `TaskEither<never, {}>` を生成。`bind` と組み合わせてオブジェクトを段階的に構築する起点 |
-| `TE.bind(name, fn)` | 成功値のオブジェクトに `fn` の結果を `name` キーで追加 |
-| `TE.chainFirst(fn)` | 副作用を実行し、成功なら元の値を維持して返す |
-| `TE.chainEitherK(fn)` | 同期の `Either` を返す関数を `TaskEither` チェーンに組み込む |
+| `Either<E, A>` | Synchronous Result type. Error is the first type argument (Left), success is the second (Right) |
+| `TaskEither<E, A>` | Asynchronous Result type (`() => Promise<Either<E, A>>`) |
+| `E.right(value)` | Creates a success value |
+| `E.left(error)` | Creates a failure value |
+| `TE.Do` | Creates `TaskEither<never, {}>`. Starting point for incrementally building an object with `bind` |
+| `TE.bind(name, fn)` | Adds the result of `fn` to the success value object under the `name` key |
+| `TE.chainFirst(fn)` | Executes a side effect and returns the original value on success |
+| `TE.chainEitherK(fn)` | Incorporates a function returning synchronous `Either` into a `TaskEither` chain |
 
-## パイプによる合成
+## Composition with Pipe
 
-fp-tsではメソッドチェーンではなく `pipe` で関数を合成する。
+In fp-ts, functions are composed with `pipe` rather than method chaining.
 
 ```typescript
 pipe(
   E.right(value),
-  E.map((a) => transform(a)),           // 成功値を変換
-  E.mapLeft((e) => transformErr(e)),     // エラー値を変換
-  E.chain((a) => nextEither(a)),         // 成功値から次のEitherへ（flatMap）
-  E.chainFirst((a) => sideEffect(a)),   // 副作用を実行し、成功なら元の値を維持
+  E.map((a) => transform(a)),           // Transform the success value
+  E.mapLeft((e) => transformErr(e)),     // Transform the error value
+  E.chain((a) => nextEither(a)),         // Chain to the next Either from a success value (flatMap)
+  E.chainFirst((a) => sideEffect(a)),   // Execute a side effect and return the original value on success
   E.fold(
     (error) => handleErr(error),
     (value) => handleOk(value),
   ),
 );
 
-// Do + bind: オブジェクトを段階的に組み立てる
+// Do + bind: incrementally build an object
 pipe(
-  TE.Do,                                              // TaskEither<never, {}> から開始
+  TE.Do,                                              // Start from TaskEither<never, {}>
   TE.bind("user", () => findUser(userId)),            // { user: User }
   TE.bind("order", ({ user }) => findOrder(user)),    // { user: User, order: Order }
-  TE.chainFirst(({ order }) => validate(order)),      // バリデーション（値は維持）
+  TE.chainFirst(({ order }) => validate(order)),      // Validation (value is preserved)
   TE.map(({ user, order }) => buildResponse(user, order)),
 );
 ```
 
-## コード例: ドメインイベントの記録
+## Code Example: Recording Domain Events
 
-Railway Oriented Programmingの原則に従い、各処理を独立した関数に切り出し、ユースケースは `pipe` + `Do`/`bind`/`chainFirst` でそれらを合成するだけにする。
+Following Railway Oriented Programming principles, extract each step into an independent function, and let the use case simply compose them with `pipe` + `Do`/`bind`/`chainFirst`.
 
 ```typescript
 import * as E from "fp-ts/Either";
@@ -164,7 +164,7 @@ const publishEvent =
   (event: DriverAssignedEvent): TE.TaskEither<AssignDriverError, void> =>
     eventStore.save(event);
 
-// --- Use Case (Do + bind による完全パイプライン合成) ---
+// --- Use Case (full pipeline composition with Do + bind) ---
 
 const assignDriverUseCase =
   (requestRepo: RequestRepository, eventStore: EventStore) =>
@@ -176,22 +176,22 @@ const assignDriverUseCase =
   ): TE.TaskEither<AssignDriverError, EnRoute> =>
     pipe(
       TE.Do,
-      // 1. リクエスト取得 → 存在確認
+      // 1. Fetch request → verify existence
       TE.bind("waiting", () =>
         pipe(
           requestRepo.findById(requestId),
           TE.chainEitherK(ensureExists(requestId)),
         ),
       ),
-      // 2. ドライバーの空き確認
+      // 2. Check driver availability
       TE.bind("driverId", () =>
         TE.fromEither(ensureDriverAvailable(driverId, isDriverAvailable)()),
       ),
-      // 3. 状態遷移
+      // 3. State transition
       TE.map(transitionToEnRoute),
-      // 4. 永続化（chainFirst で enRoute を維持）
+      // 4. Persist (chainFirst preserves enRoute)
       TE.chainFirst(persistEnRoute(requestRepo)),
-      // 5. ドメインイベント発行（chainFirst で enRoute を維持）
+      // 5. Publish domain event (chainFirst preserves enRoute)
       TE.chainFirst((enRoute) =>
         publishEvent(eventStore)(buildDriverAssignedEvent(now)(enRoute)),
       ),

@@ -1,58 +1,58 @@
 # @praha/byethrow
 
-## 基本API
+## Basic API
 
 ```typescript
 import { Result } from "@praha/byethrow";
 ```
 
-| 関数/型 | 説明 |
+| Function/Type | Description |
 |---------|------|
-| `Result.Result<T, E>` | Result型（`Success<T> \| Failure<E>` の判別共用体、プレーンオブジェクト） |
-| `Result.ResultAsync<T, E>` | `Promise<Result<T, E>>` の型エイリアス |
-| `Result.succeed(value)` | 成功値を生成（`{ type: "Success", value }`) |
-| `Result.fail(error)` | 失敗値を生成（`{ type: "Failure", error }`） |
-| `Result.do()` | `Success<{}>` を生成。`bind` と組み合わせてオブジェクトを段階的に構築する起点 |
-| `Result.bind(name, fn)` | 成功値のオブジェクトに `fn` の結果を `name` キーで追加（`andThen` + マージ） |
-| `Result.andThrough(fn)` | 副作用を実行し、成功なら元の値を維持して返す |
-| `Result.orThrough(fn)` | エラー側の副作用を実行し、失敗なら元のエラーを維持して返す |
+| `Result.Result<T, E>` | Result type (`Success<T> \| Failure<E>` discriminated union, plain object) |
+| `Result.ResultAsync<T, E>` | Type alias for `Promise<Result<T, E>>` |
+| `Result.succeed(value)` | Creates a success value (`{ type: "Success", value }`) |
+| `Result.fail(error)` | Creates a failure value (`{ type: "Failure", error }`) |
+| `Result.do()` | Creates `Success<{}>`. Starting point for incrementally building an object with `bind` |
+| `Result.bind(name, fn)` | Adds the result of `fn` to the success value object under the `name` key (`andThen` + merge) |
+| `Result.andThrough(fn)` | Executes a side effect and returns the original value on success |
+| `Result.orThrough(fn)` | Executes a side effect on the error side and returns the original error on failure |
 
-neverthrowとの主な違い:
+Main differences from neverthrow:
 
-- クラスではなくプレーンオブジェクト（discriminantは `type` フィールド）
-- メソッドチェーンではなく `Result.pipe` + カリー化関数で合成
-- `andThrough` / `orThrough` で副作用を挟みつつ元の値を維持できる
+- Plain objects instead of classes (discriminant is the `type` field)
+- Composition via `Result.pipe` + curried functions instead of method chaining
+- `andThrough` / `orThrough` allow side effects while preserving the original value
 
-## パイプによる合成
+## Composition with Pipe
 
 ```typescript
 Result.pipe(
   result,
-  Result.map((value) => transform(value)),         // 成功値を変換
-  Result.mapError((error) => transformErr(error)),  // エラー値を変換
-  Result.andThen((value) => nextResult(value)),     // 成功値から次のResultへ（flatMap）
-  Result.andThrough((value) => sideEffect(value)),  // 副作用を実行し、成功なら元の値を維持
-  Result.orElse((error) => recover(error)),         // エラーから回復
+  Result.map((value) => transform(value)),         // Transform the success value
+  Result.mapError((error) => transformErr(error)),  // Transform the error value
+  Result.andThen((value) => nextResult(value)),     // Chain to the next Result from a success value (flatMap)
+  Result.andThrough((value) => sideEffect(value)),  // Execute a side effect and return the original value on success
+  Result.orElse((error) => recover(error)),         // Recover from an error
 );
 
-// 非同期: andThen/andThrough に Promise<Result> を返す関数を渡すと
-// パイプ全体が自動的に Promise に昇格する（ResultMaybeAsync）
+// Async: passing a function that returns Promise<Result> to andThen/andThrough
+// automatically promotes the entire pipe to a Promise (ResultMaybeAsync)
 Result.pipe(
   result,
-  Result.andThen((value) => fetchSomething(value)), // ResultAsync を返してもOK
-  Result.andThrough((value) => saveToDb(value)),    // 副作用も非同期対応
+  Result.andThen((value) => fetchSomething(value)), // ResultAsync is also fine
+  Result.andThrough((value) => saveToDb(value)),    // Side effects also support async
 );
 
-// do + bind: オブジェクトを段階的に組み立てる
+// do + bind: incrementally build an object
 Result.pipe(
-  Result.do(),                                       // Success<{}> から開始
+  Result.do(),                                       // Start from Success<{}>
   Result.bind("user", () => findUser(userId)),       // { user: User }
   Result.bind("order", ({ user }) => findOrder(user)), // { user: User, order: Order }
-  Result.andThrough(({ order }) => validate(order)), // バリデーション（値は維持）
+  Result.andThrough(({ order }) => validate(order)), // Validation (value is preserved)
   Result.map(({ user, order }) => buildResponse(user, order)),
 );
 
-// 分岐は型ガードで行う
+// Branching uses type guards
 if (Result.isSuccess(result)) {
   console.log(result.value);
 } else {
@@ -60,9 +60,9 @@ if (Result.isSuccess(result)) {
 }
 ```
 
-## コード例: ドメインイベントの記録
+## Code Example: Recording Domain Events
 
-Railway Oriented Programmingの原則に従い、各処理を独立した関数に切り出し、ユースケースは `Result.pipe` でそれらを合成するだけにする。
+Following Railway Oriented Programming principles, extract each step into an independent function, and let the use case simply compose them with `Result.pipe`.
 
 ```typescript
 import { Result } from "@praha/byethrow";
@@ -181,7 +181,7 @@ const publishEvent =
   (event: DriverAssignedEvent): Result.ResultAsync<void, AssignDriverError> =>
     eventStore.save(event);
 
-// --- Use Case (do + bind による完全パイプライン合成) ---
+// --- Use Case (full pipeline composition with do + bind) ---
 
 const assignDriverUseCase =
   (requestRepo: RequestRepository, eventStore: EventStore) =>
@@ -193,22 +193,22 @@ const assignDriverUseCase =
   ): Result.ResultAsync<EnRoute, AssignDriverError> =>
     Result.pipe(
       Result.do(),
-      // 1. リクエスト取得 → 存在確認
+      // 1. Fetch request → verify existence
       Result.bind("waiting", () =>
         Result.pipe(
           findWaitingRequest(requestRepo)(requestId),
           Result.andThen(ensureExists(requestId)),
         ),
       ),
-      // 2. ドライバーの空き確認
+      // 2. Check driver availability
       Result.bind("driverId", () =>
         ensureDriverAvailable(driverId, isDriverAvailable)(),
       ),
-      // 3. 状態遷移
+      // 3. State transition
       Result.map(transitionToEnRoute),
-      // 4. 永続化（andThrough で enRoute を維持）
+      // 4. Persist (andThrough preserves enRoute)
       Result.andThrough(persistEnRoute(requestRepo)),
-      // 5. ドメインイベント発行（andThrough で enRoute を維持）
+      // 5. Publish domain event (andThrough preserves enRoute)
       Result.andThrough((enRoute) =>
         publishEvent(eventStore)(buildDriverAssignedEvent(now)(enRoute)),
       ),
