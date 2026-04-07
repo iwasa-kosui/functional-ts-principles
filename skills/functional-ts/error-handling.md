@@ -2,7 +2,7 @@
 
 ## Railway Oriented Programming
 
-neverthrow の `Result<T, E>` を使い、成功と失敗を型で表現する。例外のthrowはドメイン層では使わない。
+Result型を使い、成功と失敗を型で表現する。例外のthrowはドメイン層では使わない。ライブラリ固有のAPIについては [result-libraries/](./result-libraries/) 内の該当ガイドを参照。
 
 ## エラー型の設計
 
@@ -28,44 +28,29 @@ type StartTripError = RequestNotFoundError | InvalidStateError;
 type AppError = RequestNotFoundError | InvalidStateError | DriverNotAvailableError | ...;
 ```
 
-## andThen チェーン
+## 処理の合成
 
-処理の合成は `andThen` で行う。各ステップが `Result` を返し、エラーが発生した時点で後続のステップはスキップされる。
-
-```typescript
-const assignDriverUseCase = (
-  requestId: RequestId,
-  driverId: DriverId,
-): ResultAsync<EnRoute, AssignDriverError> =>
-  requestRepository
-    .findById(requestId)
-    .andThen(ensureFound(requestId))
-    .andThen(ensureWaiting)
-    .andThen((waiting) => checkDriverAvailability(driverId).map(() => waiting))
-    .andThen((waiting) => {
-      const enRoute = TaxiRequest.assignDriver(waiting, driverId);
-      return requestRepository.save(enRoute).map(() => enRoute);
-    });
-```
+各ステップがResult型を返し、エラーが発生した時点で後続のステップはスキップされる。合成のAPIはライブラリごとに異なる（neverthrow/byethrowでは `.andThen()`、fp-tsでは `pipe` + `chain`、option-tでは `flatMapForResult`）。
 
 ### ヘルパー関数
 
-共通のバリデーションは小さな関数に切り出す。
+共通のバリデーションは小さな関数に切り出し、合成の各ステップとして使う。
 
 ```typescript
+// ヘルパーの戻り値はResult型。具体的なAPI（ok/err, right/left等）はライブラリに依存
 const ensureFound = <T>(id: RequestId) => (
   value: T | undefined,
 ): Result<T, RequestNotFoundError> =>
   value !== undefined
-    ? ok(value)
-    : err({ kind: "RequestNotFound", requestId: id });
+    ? success(value)   // ok(), right(), createOk() 等
+    : failure({ kind: "RequestNotFound", requestId: id });
 
 const ensureWaiting = (
   request: TaxiRequest,
 ): Result<Waiting, InvalidStateError> =>
   request.kind === "Waiting"
-    ? ok(request)
-    : err({ kind: "InvalidState", currentKind: request.kind, expectedKind: "Waiting" });
+    ? success(request)
+    : failure({ kind: "InvalidState", currentKind: request.kind, expectedKind: "Waiting" });
 ```
 
 ## Controller層でのエラー変換

@@ -37,12 +37,11 @@ type CreateRequestInput = z.infer<typeof CreateRequestInput>;
 `parse` は例外をスローする。Railway Oriented Programmingとの統合には `safeParse` を使い、結果をResult型に変換する。
 
 ```typescript
-import { fromSafeParseReturnType } from "neverthrow-zod"; // or 手動変換
-
+// safeParse の結果をプロジェクトで使用しているResult型ライブラリに変換する
 const parseInput = (raw: unknown): Result<CreateRequestInput, ValidationError> => {
   const result = CreateRequestInput.safeParse(raw);
-  if (result.success) return ok(result.data);
-  return err({ kind: "ValidationError", issues: result.error.issues });
+  if (result.success) return success(result.data);  // ok(), right(), createOk() 等
+  return failure({ kind: "ValidationError", issues: result.error.issues });
 };
 ```
 

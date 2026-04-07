@@ -166,42 +166,24 @@ const describe = (request: TaxiRequest): string => {
 
 ## 3. エラーハンドリング — Railway Oriented Programming
 
-例外をスローせず、`Result<T, E>` 型（neverthrow）でエラーを値として扱う。
+例外をスローせず、Result型でエラーを値として扱う。
+
+**ライブラリの検出:** プロジェクトの `package.json` の `dependencies` / `devDependencies` を確認し、該当するライブラリのガイドに従う。いずれも見つからない場合はユーザーに確認する。
+
+- `neverthrow` → [result-libraries/neverthrow.md](./result-libraries/neverthrow.md)
+- `byethrow` → [result-libraries/byethrow.md](./result-libraries/byethrow.md)
+- `fp-ts` → [result-libraries/fp-ts.md](./result-libraries/fp-ts.md)
+- `option-t` → [result-libraries/option-t.md](./result-libraries/option-t.md)
+
+エラー型はDiscriminated Unionで定義し、呼び出し元が網羅的にハンドルできるようにする。
 
 ```typescript
-import { ok, err, Result } from "neverthrow";
-
 type AssignError =
   | Readonly<{ kind: "DriverNotAvailable"; driverId: DriverId }>
   | Readonly<{ kind: "RequestAlreadyAssigned" }>;
-
-const assignDriver = (
-  waiting: Waiting,
-  driverId: DriverId,
-  isAvailable: boolean,
-): Result<EnRoute, AssignError> => {
-  if (!isAvailable) {
-    return err({ kind: "DriverNotAvailable", driverId });
-  }
-  return ok({
-    kind: "EnRoute",
-    passengerId: waiting.passengerId,
-    driverId,
-  });
-};
 ```
 
-`andThen` チェーンで処理を合成する。
-
-```typescript
-const processRequest = (requestId: RequestId) =>
-  findRequest(requestId)
-    .andThen(validateWaiting)
-    .andThen((waiting) => assignDriver(waiting, driverId, isAvailable))
-    .andThen(saveRequest);
-```
-
-エラー型もDiscriminated Unionで定義し、呼び出し元が網羅的にハンドルできるようにする。
+成功・失敗を型で表現し、チェーンで処理を合成する。各ライブラリのAPIについては上記のガイドを参照。
 
 詳細: [error-handling.md](./error-handling.md)
 
