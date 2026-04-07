@@ -48,7 +48,21 @@ type TaxiRequest = {
 
 ### Companion Objectパターン
 
-型定義と関連する関数を同名のオブジェクトにまとめる。
+型定義と関連する関数を同名のオブジェクトにまとめる。Branded Types の Zod スキーマは、スタンドアロンの export ではなく companion object の `schema` プロパティとして公開する。
+
+```typescript
+// ❌ スキーマを単独 export — 実装詳細の漏洩
+export const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
+
+// ✅ companion object が schema を所有する
+const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
+export type ItemId = z.infer<typeof ItemIdSchema>;
+
+export const ItemId = {
+  schema: ItemIdSchema,
+  parse: (raw: string) => ItemIdSchema.safeParse(raw),
+} as const;
+```
 
 ```typescript
 type TaxiRequest = Waiting | EnRoute | InTrip | Completed | Cancelled;
@@ -114,19 +128,50 @@ type TaskRepository = {
 
 構造的部分型により `string` 同士は互換になる。意味の異なるIDや値にはBranded Typeを適用する。
 
+Zodを使っている場合は `z.brand()` で定義する。スキーマの出力型が自動的にブランド付きになるため、`as` キャストが不要になる。
+
+```typescript
+import { z } from "zod";
+
+const UserIdSchema = z.string().uuid().brand<"UserId">();
+type UserId = z.infer<typeof UserIdSchema>;
+
+const ProductIdSchema = z.string().uuid().brand<"ProductId">();
+type ProductId = z.infer<typeof ProductIdSchema>;
+
+// safeParse().data は既にブランド付き — as 不要
+```
+
+Zodを使わないプロジェクトでは `unique symbol` パターンを使う。
+
 ```typescript
 declare const UserIdBrand: unique symbol;
 type UserId = string & { readonly [UserIdBrand]: never };
 
 declare const ProductIdBrand: unique symbol;
 type ProductId = string & { readonly [ProductIdBrand]: never };
-
-// UserId と ProductId は構造的に非互換になる
 ```
 
 ### `Readonly<>` で不変性を保証する
 
 ドメインオブジェクトは `Readonly<>` で定義し、プロパティの再代入を防ぐ。状態変更は新しいオブジェクトの生成で表現する。
+
+### ファイル構成: 1概念1ファイル
+
+各ドメイン概念（型 + companion object）は専用のファイルに配置する。`types.ts` や `models.ts` のような catch-all ファイルは禁止。型と振る舞いが分離し、循環依存の原因になる。
+
+```
+// ❌ types.ts に型を集約、companion は別ファイル
+// types.ts — ItemId, ItemType, Status, Priority, Item, Config, ...
+// item-id.ts — ItemId の companion object（types.ts から型を import）
+
+// ✅ 概念ごとにファイルを分割
+// item-id.ts — type ItemId + const ItemId (companion)
+// item-type.ts — type ItemType + const ItemType (companion)
+// status.ts — type Status + const Status (companion)
+```
+
+barrel file（`index.ts`）は re-export のみに使い、型や関数を直接定義しない。
 
 ## 2. 関数による状態遷移
 

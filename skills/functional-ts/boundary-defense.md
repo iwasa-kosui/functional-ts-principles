@@ -57,11 +57,25 @@ const user = data as User;
 const user = UserSchema.parse(data);
 ```
 
-唯一の例外は Branded Types の生成関数内。
+Branded Types についても `z.brand()` を使えば `as` は不要になる。
+
+```typescript
+// ❌ 手動ブランド + as キャスト
+type ItemId = string & { readonly __brand: unique symbol };
+const ItemIdSchema = z.string().regex(/^item-\d+$/);
+const parse = (raw: string): ItemId => ItemIdSchema.parse(raw) as ItemId;
+
+// ✅ z.brand() — as 不要
+const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
+type ItemId = z.infer<typeof ItemIdSchema>;
+const parse = (raw: string): ItemId => ItemIdSchema.parse(raw); // 既に ItemId 型
+```
+
+Zodを使わないプロジェクトでは、Branded Types の生成関数内に限り `as` を許容する。
 
 ```typescript
 const UserId = {
-  of: (value: string): UserId => value as UserId, // ここだけ許容
+  of: (value: string): UserId => value as UserId, // Zod未使用時のみ許容
 };
 ```
 
