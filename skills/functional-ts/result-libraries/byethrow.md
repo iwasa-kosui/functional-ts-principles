@@ -12,6 +12,10 @@ import { Result } from "@praha/byethrow";
 | `Result.ResultAsync<T, E>` | `Promise<Result<T, E>>` の型エイリアス |
 | `Result.succeed(value)` | 成功値を生成（`{ type: "Success", value }`) |
 | `Result.fail(error)` | 失敗値を生成（`{ type: "Failure", error }`） |
+| `Result.do()` | `Success<{}>` を生成。`bind` と組み合わせてオブジェクトを段階的に構築する起点 |
+| `Result.bind(name, fn)` | 成功値のオブジェクトに `fn` の結果を `name` キーで追加（`andThen` + マージ） |
+| `Result.andThrough(fn)` | 副作用を実行し、成功なら元の値を維持して返す |
+| `Result.orThrough(fn)` | エラー側の副作用を実行し、失敗なら元のエラーを維持して返す |
 
 neverthrowとの主な違い:
 
@@ -27,7 +31,25 @@ Result.pipe(
   Result.map((value) => transform(value)),         // 成功値を変換
   Result.mapError((error) => transformErr(error)),  // エラー値を変換
   Result.andThen((value) => nextResult(value)),     // 成功値から次のResultへ（flatMap）
+  Result.andThrough((value) => sideEffect(value)),  // 副作用を実行し、成功なら元の値を維持
   Result.orElse((error) => recover(error)),         // エラーから回復
+);
+
+// 非同期: andThen/andThrough に Promise<Result> を返す関数を渡すと
+// パイプ全体が自動的に Promise に昇格する（ResultMaybeAsync）
+Result.pipe(
+  result,
+  Result.andThen((value) => fetchSomething(value)), // ResultAsync を返してもOK
+  Result.andThrough((value) => saveToDb(value)),    // 副作用も非同期対応
+);
+
+// do + bind: オブジェクトを段階的に組み立てる
+Result.pipe(
+  Result.do(),                                       // Success<{}> から開始
+  Result.bind("user", () => findUser(userId)),       // { user: User }
+  Result.bind("order", ({ user }) => findOrder(user)), // { user: User, order: Order }
+  Result.andThrough(({ order }) => validate(order)), // バリデーション（値は維持）
+  Result.map(({ user, order }) => buildResponse(user, order)),
 );
 
 // 分岐は型ガードで行う
@@ -39,6 +61,8 @@ if (Result.isSuccess(result)) {
 ```
 
 ## コード例: ドメインイベントの記録
+
+Railway Oriented Programmingの原則に従い、各処理を独立した関数に切り出し、ユースケースは `Result.pipe` でそれらを合成するだけにする。
 
 ```typescript
 import { Result } from "@praha/byethrow";
@@ -105,57 +129,88 @@ type AssignDriverError =
 
 type RepositoryError = Readonly<{ kind: "RepositoryError"; cause: unknown }>;
 
-// --- Use Case ---
+// --- Domain Functions ---
+
+const findWaitingRequest =
+  (requestRepo: RequestRepository) =>
+  (requestId: RequestId): Result.ResultAsync<Waiting | undefined, AssignDriverError> =>
+    requestRepo.findById(requestId);
+
+const ensureExists =
+  (requestId: RequestId) =>
+  (request: Waiting | undefined): Result.Result<Waiting, AssignDriverError> =>
+    request !== undefined
+      ? Result.succeed(request)
+      : Result.fail({ kind: "RequestNotFound", requestId });
+
+const ensureDriverAvailable =
+  (driverId: DriverId, isAvailable: boolean) =>
+  (): Result.Result<DriverId, AssignDriverError> =>
+    isAvailable
+      ? Result.succeed(driverId)
+      : Result.fail({ kind: "DriverNotAvailable", driverId });
+
+const transitionToEnRoute = (ctx: {
+  waiting: Waiting;
+  driverId: DriverId;
+}): EnRoute => ({
+  kind: "EnRoute",
+  requestId: ctx.waiting.requestId,
+  passengerId: ctx.waiting.passengerId,
+  driverId: ctx.driverId,
+});
+
+const buildDriverAssignedEvent =
+  (now: Date) =>
+  (enRoute: EnRoute): DriverAssignedEvent => ({
+    eventId: crypto.randomUUID(),
+    eventAt: now,
+    eventName: "DriverAssigned",
+    payload: { driverId: enRoute.driverId, passengerId: enRoute.passengerId },
+    aggregateId: enRoute.requestId,
+    aggregateName: "TaxiRequest",
+  });
+
+const persistEnRoute =
+  (requestRepo: RequestRepository) =>
+  (enRoute: EnRoute): Result.ResultAsync<void, AssignDriverError> =>
+    requestRepo.save(enRoute);
+
+const publishEvent =
+  (eventStore: EventStore) =>
+  (event: DriverAssignedEvent): Result.ResultAsync<void, AssignDriverError> =>
+    eventStore.save(event);
+
+// --- Use Case (do + bind による完全パイプライン合成) ---
 
 const assignDriverUseCase =
   (requestRepo: RequestRepository, eventStore: EventStore) =>
-  async (
+  (
     requestId: RequestId,
     driverId: DriverId,
     isDriverAvailable: boolean,
     now: Date,
-  ): Result.ResultAsync<EnRoute, AssignDriverError> => {
-    const requestResult = await requestRepo.findById(requestId);
-
-    const waitingResult = Result.pipe(
-      requestResult,
-      Result.andThen((request) =>
-        request !== undefined
-          ? Result.succeed(request)
-          : Result.fail({ kind: "RequestNotFound" as const, requestId }),
+  ): Result.ResultAsync<EnRoute, AssignDriverError> =>
+    Result.pipe(
+      Result.do(),
+      // 1. リクエスト取得 → 存在確認
+      Result.bind("waiting", () =>
+        Result.pipe(
+          findWaitingRequest(requestRepo)(requestId),
+          Result.andThen(ensureExists(requestId)),
+        ),
+      ),
+      // 2. ドライバーの空き確認
+      Result.bind("driverId", () =>
+        ensureDriverAvailable(driverId, isDriverAvailable)(),
+      ),
+      // 3. 状態遷移
+      Result.map(transitionToEnRoute),
+      // 4. 永続化（andThrough で enRoute を維持）
+      Result.andThrough(persistEnRoute(requestRepo)),
+      // 5. ドメインイベント発行（andThrough で enRoute を維持）
+      Result.andThrough((enRoute) =>
+        publishEvent(eventStore)(buildDriverAssignedEvent(now)(enRoute)),
       ),
     );
-
-    if (Result.isFailure(waitingResult)) return waitingResult;
-
-    const waiting = waitingResult.value;
-
-    if (!isDriverAvailable) {
-      return Result.fail({ kind: "DriverNotAvailable" as const, driverId });
-    }
-
-    const enRoute: EnRoute = {
-      kind: "EnRoute",
-      requestId: waiting.requestId,
-      passengerId: waiting.passengerId,
-      driverId,
-    };
-
-    const event: DriverAssignedEvent = {
-      eventId: crypto.randomUUID(),
-      eventAt: now,
-      eventName: "DriverAssigned",
-      payload: { driverId, passengerId: waiting.passengerId },
-      aggregateId: waiting.requestId,
-      aggregateName: "TaxiRequest",
-    };
-
-    const saveResult = await requestRepo.save(enRoute);
-    if (Result.isFailure(saveResult)) return saveResult;
-
-    const eventResult = await eventStore.save(event);
-    if (Result.isFailure(eventResult)) return eventResult;
-
-    return Result.succeed(enRoute);
-  };
 ```
