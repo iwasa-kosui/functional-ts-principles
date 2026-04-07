@@ -1,4 +1,4 @@
-# functional-ts-principal
+# functional-ts-principles
 
 サーバーサイドTypeScriptで関数型ドメインモデリングを実践するための原則を、コーディングエージェント向けスキルプラグインとして提供する。
 
