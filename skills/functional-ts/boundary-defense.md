@@ -45,6 +45,94 @@ const parseInput = (raw: unknown): Result<CreateRequestInput, ValidationError> =
 };
 ```
 
+### スキーマファクトリ: `safeParse` → Result型の自動変換
+
+上記の `safeParse` → Result型変換は全スキーマで同じパターンになる。毎回手書きせず、プロジェクトで使用するResult型ライブラリに合わせたスキーマファクトリを1つ定義し、各スキーマの `parse` 関数を自動生成する。
+
+#### neverthrow の場合
+
+```typescript
+import { ok, err, Result } from "neverthrow";
+import { z } from "zod";
+
+type ValidationError = Readonly<{
+  kind: "ValidationError";
+  issues: z.ZodIssue[];
+}>;
+
+const zodResult = <T>(schema: z.ZodType<T>) =>
+  (raw: unknown): Result<T, ValidationError> => {
+    const result = schema.safeParse(raw);
+    if (result.success) return ok(result.data);
+    return err({ kind: "ValidationError", issues: result.error.issues });
+  };
+
+// 使用例
+const parseCreateRequestInput = zodResult(CreateRequestInput);
+const parseRequestId = zodResult(RequestIdSchema);
+
+// parse: (raw: unknown) => Result<CreateRequestInput, ValidationError>
+const result = parseCreateRequestInput(rawBody);
+```
+
+#### fp-ts の場合
+
+```typescript
+import * as E from "fp-ts/Either";
+import { z } from "zod";
+
+type ValidationError = Readonly<{
+  kind: "ValidationError";
+  issues: z.ZodIssue[];
+}>;
+
+const zodEither = <T>(schema: z.ZodType<T>) =>
+  (raw: unknown): E.Either<ValidationError, T> => {
+    const result = schema.safeParse(raw);
+    if (result.success) return E.right(result.data);
+    return E.left({ kind: "ValidationError", issues: result.error.issues });
+  };
+```
+
+#### option-t の場合
+
+```typescript
+import { createOk, createErr, type Result } from "option-t/plain_result";
+import { z } from "zod";
+
+type ValidationError = Readonly<{
+  kind: "ValidationError";
+  issues: z.ZodIssue[];
+}>;
+
+const zodResult = <T>(schema: z.ZodType<T>) =>
+  (raw: unknown): Result<T, ValidationError> => {
+    const result = schema.safeParse(raw);
+    if (result.success) return createOk(result.data);
+    return createErr({ kind: "ValidationError", issues: result.error.issues });
+  };
+```
+
+#### ガイドライン
+
+- スキーマごとに `safeParse` → Result変換を手書きしない。ファクトリ関数を1つ定義してプロジェクト全体で再利用する
+- ファクトリの戻り値の型は、使用するResult型ライブラリの型に統一する
+- Branded Typesのスキーマ（`z.string().brand<"RequestId">()`）にも同じファクトリが適用できる
+- companion objectパターンと組み合わせ、スキーマ定義と `parse` 関数をまとめて公開する:
+
+```typescript
+const RequestIdSchema = z.string().uuid().brand<"RequestId">();
+type RequestId = z.infer<typeof RequestIdSchema>;
+
+const RequestId = {
+  schema: RequestIdSchema,
+  parse: zodResult(RequestIdSchema),
+} as const;
+
+// 使用側
+const id = RequestId.parse(raw); // Result<RequestId, ValidationError>
+```
+
 ## 型アサーション（`as`）の禁止
 
 `as` は型チェックをバイパスする。外部データには Zod、内部データは型推論を信頼する。
