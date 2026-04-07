@@ -5,16 +5,16 @@ description: Use when writing server-side TypeScript code involving domain model
 
 # Functional Domain Modeling in TypeScript
 
-サーバーサイドTypeScriptでドメインモデルを書くときの原則。classベースのOOPではなく、TypeScriptの型システムを最大限に活用した関数型アプローチを採る。
+Principles for writing domain models in server-side TypeScript. Instead of class-based OOP, this approach maximizes the TypeScript type system through a functional style.
 
-## 1. 型によるドメインモデリング
+## 1. Type-Driven Domain Modeling
 
-### Discriminated Unionで状態を表現する
+### Represent State with Discriminated Unions
 
-ドメインエンティティの状態はclassではなくDiscriminated Unionで定義する。各状態を個別の型として定義し、状態固有のプロパティを必須にする。
+Define domain entity states using Discriminated Unions instead of classes. Define each state as its own type and make state-specific properties required.
 
 ```typescript
-// Good: 各状態が独立した型。状態固有のプロパティが必須
+// Good: Each state is an independent type. State-specific properties are required
 type Waiting = Readonly<{
   kind: "Waiting";
   passengerId: PassengerId;
@@ -30,31 +30,31 @@ type TaxiRequest = Waiting | EnRoute | InTrip | Completed | Cancelled;
 ```
 
 ```typescript
-// Bad: optional プロパティで全状態を1つの型に押し込む
+// Bad: Cramming all states into one type with optional properties
 type TaxiRequest = {
   state: string;
   passengerId: string;
-  driverId?: string;    // どの状態で存在するか不明
-  startTime?: Date;     // null チェックが至る所で必要
+  driverId?: string;    // unclear which state this exists in
+  startTime?: Date;     // null checks required everywhere
   endTime?: Date;
 };
 ```
 
-**理由:** optional プロパティは「どの状態でどのプロパティが存在するか」をコンパイル時に保証できない。Discriminated Unionなら、switch文でkindを判別した時点で状態固有のプロパティに安全にアクセスできる。
+**Rationale:** Optional properties cannot guarantee at compile time which properties exist in which state. With Discriminated Unions, once you narrow on `kind` in a switch statement, you can safely access state-specific properties.
 
-### discriminantは `kind` で統一する
+### Use `kind` as the unified discriminant
 
-プロジェクト全体で `kind` をdiscriminantプロパティ名として統一する。`type`, `status`, `state` などが混在するとコードベースの一貫性が損なわれる。
+Use `kind` as the discriminant property name throughout the entire project. Mixing `type`, `status`, `state`, etc. undermines codebase consistency.
 
-### Companion Objectパターン
+### Companion Object Pattern
 
-型定義と関連する関数を同名のオブジェクトにまとめる。Branded Types の Zod スキーマは、スタンドアロンの export ではなく companion object の `schema` プロパティとして公開する。
+Group a type definition and its related functions under an object of the same name. Branded Type Zod schemas should be exposed as a `schema` property on the companion object, not as standalone exports.
 
 ```typescript
-// ❌ スキーマを単独 export — 実装詳細の漏洩
+// ❌ Standalone schema export — leaks implementation details
 export const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
 
-// ✅ companion object が schema を所有する
+// ✅ Companion object owns the schema
 const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
 export type ItemId = z.infer<typeof ItemIdSchema>;
 
@@ -86,9 +86,9 @@ const TaxiRequest = {
 } as const;
 ```
 
-### `type` を使う（`interface` ではなく）
+### Use `type` (not `interface`)
 
-ドメイン型は `type` で定義する。`interface` のdeclaration mergingは、別ファイルで同名のinterfaceを宣言するだけで型の形状が暗黙的に変わる危険がある。
+Define domain types with `type`. The declaration merging of `interface` poses a risk: declaring an interface with the same name in another file silently changes the type's shape.
 
 ```typescript
 // Good
@@ -97,38 +97,38 @@ type User = Readonly<{
   name: string;
 }>;
 
-// Bad: 別ファイルで interface User { hashedPassword?: string } と宣言されると
-// 気づかないうちに型が変わる
+// Bad: if another file declares `interface User { hashedPassword?: string }`,
+// the type changes without you noticing
 interface User {
   id: string;
   name: string;
 }
 ```
 
-### 関数プロパティ記法を使う（メソッド記法ではなく）
+### Use function property notation (not method notation)
 
-型定義内の関数はメソッド記法ではなく関数プロパティ記法で書く。メソッド記法はパラメータ型がbivariantになり、型安全性が崩れる。
+Write functions inside type definitions using function property notation, not method notation. Method notation makes parameter types bivariant, breaking type safety.
 
 ```typescript
-// Good: 関数プロパティ記法 — パラメータはcontravariant
+// Good: function property notation — parameters are contravariant
 type TaskRepository = {
   save: (task: Task) => Promise<void>;
   findById: (id: TaskId) => Promise<Task | undefined>;
 };
 
-// Bad: メソッド記法 — パラメータがbivariantになり、
-// save(task: DoingTask) のような狭い実装が型チェックを通過してしまう
+// Bad: method notation — parameters become bivariant,
+// allowing a narrower implementation like save(task: DoingTask) to pass type checks
 type TaskRepository = {
   save(task: Task): Promise<void>;
   findById(id: TaskId): Promise<Task | undefined>;
 };
 ```
 
-### Branded Typesで意味を区別する
+### Distinguish meaning with Branded Types
 
-構造的部分型により `string` 同士は互換になる。意味の異なるIDや値にはBranded Typeを適用する。
+Due to structural subtyping, two `string` values are compatible. Apply Branded Types to IDs and values with different semantic meanings.
 
-Zodを使っている場合は `z.brand()` で定義する。スキーマの出力型が自動的にブランド付きになるため、`as` キャストが不要になる。
+When using Zod, define brands with `z.brand()`. The schema output type becomes automatically branded, eliminating the need for `as` casts.
 
 ```typescript
 import { z } from "zod";
@@ -139,10 +139,10 @@ type UserId = z.infer<typeof UserIdSchema>;
 const ProductIdSchema = z.string().uuid().brand<"ProductId">();
 type ProductId = z.infer<typeof ProductIdSchema>;
 
-// safeParse().data は既にブランド付き — as 不要
+// safeParse().data is already branded — no `as` cast needed
 ```
 
-Zodを使わないプロジェクトでは `unique symbol` パターンを使う。
+For projects not using Zod, use the `unique symbol` pattern.
 
 ```typescript
 declare const UserIdBrand: unique symbol;
@@ -152,33 +152,33 @@ declare const ProductIdBrand: unique symbol;
 type ProductId = string & { readonly [ProductIdBrand]: never };
 ```
 
-### `Readonly<>` で不変性を保証する
+### Ensure immutability with `Readonly<>`
 
-ドメインオブジェクトは `Readonly<>` で定義し、プロパティの再代入を防ぐ。状態変更は新しいオブジェクトの生成で表現する。
+Define domain objects with `Readonly<>` to prevent property reassignment. Express state changes by creating new objects.
 
-### ファイル構成: 1概念1ファイル
+### File structure: one concept per file
 
-各ドメイン概念（型 + companion object）は専用のファイルに配置する。`types.ts` や `models.ts` のような catch-all ファイルは禁止。型と振る舞いが分離し、循環依存の原因になる。
+Place each domain concept (type + companion object) in its own dedicated file. Catch-all files like `types.ts` or `models.ts` are prohibited — they separate types from behavior and cause circular dependencies.
 
 ```
-// ❌ types.ts に型を集約、companion は別ファイル
+// ❌ Types aggregated in types.ts, companions in separate files
 // types.ts — ItemId, ItemType, Status, Priority, Item, Config, ...
-// item-id.ts — ItemId の companion object（types.ts から型を import）
+// item-id.ts — ItemId companion object (imports type from types.ts)
 
-// ✅ 概念ごとにファイルを分割
+// ✅ Split files per concept
 // item-id.ts — type ItemId + const ItemId (companion)
 // item-type.ts — type ItemType + const ItemType (companion)
 // status.ts — type Status + const Status (companion)
 ```
 
-barrel file（`index.ts`）は re-export のみに使い、型や関数を直接定義しない。
+Barrel files (`index.ts`) are for re-exports only; do not define types or functions directly in them.
 
-## 2. 関数による状態遷移
+## 2. State Transitions via Functions
 
-純粋関数で状態遷移を表現する。関数の引数型が有効な遷移元を制約し、戻り値型が遷移先を明示する。
+Express state transitions with pure functions. The argument type constrains valid source states, and the return type makes the target state explicit.
 
 ```typescript
-// assignDriver は Waiting 状態からのみ呼べる
+// assignDriver can only be called from the Waiting state
 const assignDriver = (waiting: Waiting, driverId: DriverId): EnRoute => ({
   kind: "EnRoute",
   passengerId: waiting.passengerId,
@@ -186,11 +186,11 @@ const assignDriver = (waiting: Waiting, driverId: DriverId): EnRoute => ({
 });
 ```
 
-無効な遷移（例: `assignDriver(completed, driverId)`）はコンパイルエラーになる。ランタイムチェックは不要。
+Invalid transitions (e.g., `assignDriver(completed, driverId)`) become compile errors. No runtime checks needed.
 
-### 網羅性チェック
+### Exhaustiveness Checking
 
-switch文では `assertNever` を使い、すべてのケースを処理していることをコンパイル時に保証する。新しい状態が追加されたとき、未処理の箇所がコンパイルエラーで検出される。
+Use `assertNever` in switch statements to guarantee at compile time that all cases are handled. When a new state is added, unhandled locations are caught as compile errors.
 
 ```typescript
 const assertNever = (x: never): never => {
@@ -209,18 +209,18 @@ const describe = (request: TaxiRequest): string => {
 };
 ```
 
-## 3. エラーハンドリング — Railway Oriented Programming
+## 3. Error Handling — Railway Oriented Programming
 
-例外をスローせず、Result型でエラーを値として扱う。
+Do not throw exceptions; treat errors as values using the Result type.
 
-**ライブラリの検出:** プロジェクトの `package.json` の `dependencies` / `devDependencies` を確認し、該当するライブラリのガイドに従う。いずれも見つからない場合はユーザーに確認する。
+**Library detection:** Check `dependencies` / `devDependencies` in the project's `package.json` and follow the guide for the matching library. If none are found, ask the user.
 
 - `neverthrow` → [result-libraries/neverthrow.md](./result-libraries/neverthrow.md)
 - `byethrow` → [result-libraries/byethrow.md](./result-libraries/byethrow.md)
 - `fp-ts` → [result-libraries/fp-ts.md](./result-libraries/fp-ts.md)
 - `option-t` → [result-libraries/option-t.md](./result-libraries/option-t.md)
 
-エラー型はDiscriminated Unionで定義し、呼び出し元が網羅的にハンドルできるようにする。
+Define error types as Discriminated Unions so callers can handle them exhaustively.
 
 ```typescript
 type AssignError =
@@ -228,13 +228,13 @@ type AssignError =
   | Readonly<{ kind: "RequestAlreadyAssigned" }>;
 ```
 
-成功・失敗を型で表現し、チェーンで処理を合成する。各ライブラリのAPIについては上記のガイドを参照。
+Express success and failure with types and compose processing with chains. See the library-specific guides above for each library's API.
 
-詳細: [error-handling.md](./error-handling.md)
+Details: [error-handling.md](./error-handling.md)
 
-## 4. 境界の防御
+## 4. Boundary Defense
 
-外部入力（APIリクエスト、DB結果、ファイル読み込み）はZodスキーマでランタイムバリデーションする。ドメイン層内部では型を信頼し、過剰な防御的バリデーションをしない。
+Validate external inputs (API requests, DB results, file reads) with Zod schemas at runtime. Trust types inside the domain layer and avoid excessive defensive validation.
 
 ```typescript
 import { z } from "zod";
@@ -247,17 +247,17 @@ const CreateRequestSchema = z.object({
 const handler = (req: Request) => {
   const result = CreateRequestSchema.safeParse(req.body);
   if (!result.success) return badRequest(result.error);
-  // result.data は型安全。以降 as は不要
+  // result.data is type-safe. No `as` cast needed from here on
 };
 ```
 
-### 型アサーション（`as`）を使わない
+### Do not use type assertions (`as`)
 
-`as` は型チェックをバイパスし、ランタイムエラーの原因になる。外部データにはZodパース、内部データは型推論を信頼する。
+`as` bypasses type checks and causes runtime errors. Use Zod parsing for external data; trust type inference for internal data.
 
-### PIIの防御
+### PII Protection
 
-個人情報を含むフィールドには `Sensitive<T>` ラッパーを適用し、`JSON.stringify` や `console.log` で自動的にマスクする。
+Apply a `Sensitive<T>` wrapper to fields containing personal information to automatically mask them in `JSON.stringify` and `console.log`.
 
 ```typescript
 type Sensitive<T> = Readonly<{
@@ -276,7 +276,7 @@ const Sensitive = {
 } as const;
 ```
 
-Zodスキーマで自動ラップする。
+Auto-wrap using a Zod schema.
 
 ```typescript
 const sensitiveString = z.string().transform(Sensitive.of);
@@ -284,17 +284,17 @@ const sensitiveString = z.string().transform(Sensitive.of);
 const PatientSchema = z.object({
   name: sensitiveString,
   email: sensitiveString,
-  role: z.string(), // PIIではないのでそのまま
+  role: z.string(), // not PII, so left as-is
 });
 ```
 
-詳細: [boundary-defense.md](./boundary-defense.md)
+Details: [boundary-defense.md](./boundary-defense.md)
 
-## 5. 宣言的なスタイル
+## 5. Declarative Style
 
-### 配列操作
+### Array Operations
 
-配列の変換は `filter` / `map` / `reduce` で宣言的に書く。述語関数はCompanion Objectに定義する。
+Write array transformations declaratively using `filter` / `map` / `reduce`. Define predicate functions in the Companion Object.
 
 ```typescript
 type Task = ActiveTask | CompletedTask;
@@ -303,19 +303,19 @@ const Task = {
   isActive: (task: Task): task is ActiveTask => task.kind === "Active",
 } as const;
 
-// 宣言的: 「何をしたいか」が明確
+// Declarative: intent is clear
 const activeTasks = tasks.filter(Task.isActive);
 
-// 命令的: ループの中身を読まないと意図がわからない
+// Imperative: you have to read the loop body to understand the intent
 const activeTasks: ActiveTask[] = [];
 for (const task of tasks) {
   if (task.kind === "Active") activeTasks.push(task);
 }
 ```
 
-### ドメインイベント
+### Domain Events
 
-状態変更に伴うドメインイベントは不変レコードとして生成し、リポジトリとは分離して記録する。
+Generate domain events that accompany state changes as immutable records, and record them separately from the repository.
 
 ```typescript
 type DomainEvent = Readonly<{
@@ -327,11 +327,11 @@ type DomainEvent = Readonly<{
 }>;
 ```
 
-詳細: [state-modeling.md](./state-modeling.md)
+Details: [state-modeling.md](./state-modeling.md)
 
-## 6. テストデータ
+## 6. Test Data
 
-テストのダミーデータは `as const satisfies Type` で型安全に定義する。discriminantのリテラル型が保持され、wideningを防ぐ。
+Define dummy test data in a type-safe way using `as const satisfies Type`. This preserves discriminant literal types and prevents widening.
 
 ```typescript
 const waitingRequest = {
@@ -339,14 +339,14 @@ const waitingRequest = {
   passengerId: "passenger-1" as PassengerId,
 } as const satisfies Waiting;
 
-// waitingRequest.kind は "Waiting" リテラル型（string ではない）
+// waitingRequest.kind is the "Waiting" literal type (not string)
 ```
 
-## 原則の適用について
+## Applying These Principles
 
-これらは推奨であり厳格なルールではない。コンテキストに応じて判断してよいが、原則から逸脱する場合はその理由をコメントで明示すること。
+These are recommendations, not strict rules. You may use your judgment based on context, but if you deviate from a principle, explicitly state the reason in a comment.
 
-典型的な逸脱の正当理由:
-- 外部ライブラリがclass継承を要求する場合
-- パフォーマンス要件により不変データの生成コストが問題になる場合
-- チームの合意により異なるパターンが採用されている場合
+Typical justified reasons to deviate:
+- An external library requires class inheritance
+- Immutable object creation cost is a performance concern
+- A different pattern has been adopted by team agreement
