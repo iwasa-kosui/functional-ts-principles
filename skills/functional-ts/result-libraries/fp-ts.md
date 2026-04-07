@@ -1,11 +1,43 @@
-/**
- * ドメインイベントの記録パターンの実例
- *
- * 状態遷移に伴うイベントをユースケース層で生成し、
- * リポジトリとは分離して保存する。
- */
+# fp-ts
 
-import { ok, err, Result, ResultAsync } from "neverthrow";
+## 基本API
+
+```typescript
+import * as E from "fp-ts/Either";
+import * as TE from "fp-ts/TaskEither";
+import { pipe } from "fp-ts/function";
+```
+
+| 関数/型 | 説明 |
+|---------|------|
+| `Either<E, A>` | 同期Result型。エラーが第1型引数（Left）、成功が第2型引数（Right） |
+| `TaskEither<E, A>` | 非同期Result型（`() => Promise<Either<E, A>>`） |
+| `E.right(value)` | 成功値を生成 |
+| `E.left(error)` | 失敗値を生成 |
+
+## パイプによる合成
+
+fp-tsではメソッドチェーンではなく `pipe` で関数を合成する。
+
+```typescript
+pipe(
+  E.right(value),
+  E.map((a) => transform(a)),           // 成功値を変換
+  E.mapLeft((e) => transformErr(e)),     // エラー値を変換
+  E.chain((a) => nextEither(a)),         // 成功値から次のEitherへ（flatMap）
+  E.fold(
+    (error) => handleErr(error),
+    (value) => handleOk(value),
+  ),
+);
+```
+
+## コード例: ドメインイベントの記録
+
+```typescript
+import * as E from "fp-ts/Either";
+import * as TE from "fp-ts/TaskEither";
+import { pipe } from "fp-ts/function";
 
 // --- Branded Types ---
 
@@ -34,7 +66,7 @@ type DriverAssignedEvent = DomainEvent<
   Readonly<{ driverId: DriverId; passengerId: PassengerId }>
 >;
 
-// --- State Types (simplified) ---
+// --- State Types ---
 
 type Waiting = Readonly<{
   kind: "Waiting";
@@ -49,15 +81,15 @@ type EnRoute = Readonly<{
   driverId: DriverId;
 }>;
 
-// --- Repository Types (function property notation) ---
+// --- Repository Types ---
 
 type RequestRepository = {
-  findById: (id: RequestId) => ResultAsync<Waiting | undefined, RepositoryError>;
-  save: (request: EnRoute) => ResultAsync<void, RepositoryError>;
+  findById: (id: RequestId) => TE.TaskEither<RepositoryError, Waiting | undefined>;
+  save: (request: EnRoute) => TE.TaskEither<RepositoryError, void>;
 };
 
 type EventStore = {
-  save: (event: DriverAssignedEvent) => ResultAsync<void, RepositoryError>;
+  save: (event: DriverAssignedEvent) => TE.TaskEither<RepositoryError, void>;
 };
 
 // --- Error Types ---
@@ -78,17 +110,17 @@ const assignDriverUseCase =
     driverId: DriverId,
     isDriverAvailable: boolean,
     now: Date,
-  ): ResultAsync<EnRoute, AssignDriverError> =>
-    requestRepo
-      .findById(requestId)
-      .andThen((request) =>
+  ): TE.TaskEither<AssignDriverError, EnRoute> =>
+    pipe(
+      requestRepo.findById(requestId),
+      TE.chain((request) =>
         request !== undefined
-          ? ok(request)
-          : err({ kind: "RequestNotFound" as const, requestId }),
-      )
-      .andThen((waiting) => {
+          ? TE.right(request)
+          : TE.left({ kind: "RequestNotFound" as const, requestId }),
+      ),
+      TE.chain((waiting) => {
         if (!isDriverAvailable) {
-          return err({ kind: "DriverNotAvailable" as const, driverId });
+          return TE.left({ kind: "DriverNotAvailable" as const, driverId });
         }
 
         const enRoute: EnRoute = {
@@ -107,8 +139,11 @@ const assignDriverUseCase =
           aggregateName: "TaxiRequest",
         };
 
-        return requestRepo
-          .save(enRoute)
-          .andThen(() => eventStore.save(event))
-          .map(() => enRoute);
-      });
+        return pipe(
+          requestRepo.save(enRoute),
+          TE.chain(() => eventStore.save(event)),
+          TE.map(() => enRoute),
+        );
+      }),
+    );
+```
