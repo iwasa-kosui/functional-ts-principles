@@ -5,16 +5,35 @@
  * 無効な遷移はコンパイルエラーで検出される。
  */
 
-// --- Branded Types ---
+// --- Branded Types (z.brand) ---
 
-declare const PassengerIdBrand: unique symbol;
-type PassengerId = string & { readonly [PassengerIdBrand]: never };
+import { z } from "zod";
 
-declare const DriverIdBrand: unique symbol;
-type DriverId = string & { readonly [DriverIdBrand]: never };
+const PassengerIdSchema = z.string().uuid().brand<"PassengerId">();
+type PassengerId = z.infer<typeof PassengerIdSchema>;
 
-declare const RequestIdBrand: unique symbol;
-type RequestId = string & { readonly [RequestIdBrand]: never };
+const DriverIdSchema = z.string().uuid().brand<"DriverId">();
+type DriverId = z.infer<typeof DriverIdSchema>;
+
+const RequestIdSchema = z.string().uuid().brand<"RequestId">();
+type RequestId = z.infer<typeof RequestIdSchema>;
+
+// --- Branded Type Companion Objects ---
+
+const PassengerId = {
+  schema: PassengerIdSchema,
+  parse: (raw: string) => PassengerIdSchema.safeParse(raw),
+} as const;
+
+const DriverId = {
+  schema: DriverIdSchema,
+  parse: (raw: string) => DriverIdSchema.safeParse(raw),
+} as const;
+
+const RequestId = {
+  schema: RequestIdSchema,
+  parse: (raw: string) => RequestIdSchema.safeParse(raw),
+} as const;
 
 // --- State Types ---
 
