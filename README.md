@@ -13,7 +13,7 @@
 ## インストール
 
 ```bash
-npx skills add iwasa-kosui/functional-ts-principal
+npx skills add iwasa-kosui/functional-ts-principles
 ```
 
 ## 提供スキル
