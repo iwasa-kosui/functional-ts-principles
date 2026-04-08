@@ -9,7 +9,7 @@ Provides principles for practicing functional domain modeling in server-side Typ
 - Represent domain state with **Discriminated Unions**, avoiding classes
 - Define state transitions with **pure functions**, making invalid transitions compile errors
 - Handle errors as values with **Result types** (neverthrow / byethrow / fp-ts / option-t), avoiding thrown exceptions
-- Validate external boundaries with **Zod**, trusting types inside the domain
+- Validate external boundaries with **schema validation** (Zod / Valibot / ArkType), trusting types inside the domain
 - Protect PII at runtime with the **Sensitive type**
 
 ## Installation
