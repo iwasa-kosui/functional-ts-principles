@@ -52,10 +52,12 @@ type TaxiRequest = {
 
 ```typescript
 // ❌ スキーマを単独 export — 実装詳細の漏洩
-export const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
+export const ItemIdBrand = Symbol();
+export const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<typeof ItemIdBrand>();
 
 // ✅ companion object が schema を所有する
-const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
+const ItemIdBrand = Symbol();
+const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<typeof ItemIdBrand>();
 export type ItemId = z.infer<typeof ItemIdSchema>;
 
 export const ItemId = {
@@ -139,10 +141,12 @@ type TaskRepository = {
 ```typescript
 import { z } from "zod";
 
-const UserIdSchema = z.string().uuid().brand<"UserId">();
+export const UserIdBrand = Symbol();
+const UserIdSchema = z.string().uuid().brand<typeof UserIdBrand>();
 type UserId = z.infer<typeof UserIdSchema>;
 
-const ProductIdSchema = z.string().uuid().brand<"ProductId">();
+export const ProductIdBrand = Symbol();
+const ProductIdSchema = z.string().uuid().brand<typeof ProductIdBrand>();
 type ProductId = z.infer<typeof ProductIdSchema>;
 
 // safeParse().data は既にブランド付き — as 不要
@@ -151,11 +155,11 @@ type ProductId = z.infer<typeof ProductIdSchema>;
 バリデーションライブラリを使わないプロジェクトでは `unique symbol` パターンを使う。
 
 ```typescript
-declare const UserIdBrand: unique symbol;
-type UserId = string & { readonly [UserIdBrand]: never };
+export const UserIdBrand = Symbol();
+type UserId = string & { readonly [typeof UserIdBrand]: never };
 
-declare const ProductIdBrand: unique symbol;
-type ProductId = string & { readonly [ProductIdBrand]: never };
+export const ProductIdBrand = Symbol();
+type ProductId = string & { readonly [typeof ProductIdBrand]: never };
 ```
 
 ### `Readonly<>` で不変性を保証する

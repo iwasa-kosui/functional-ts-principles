@@ -9,13 +9,16 @@
 
 import { z } from "zod";
 
-const PassengerIdSchema = z.string().uuid().brand<"PassengerId">();
+export const PassengerIdBrand = Symbol();
+const PassengerIdSchema = z.string().uuid().brand<typeof PassengerIdBrand>();
 type PassengerId = z.infer<typeof PassengerIdSchema>;
 
-const DriverIdSchema = z.string().uuid().brand<"DriverId">();
+export const DriverIdBrand = Symbol();
+const DriverIdSchema = z.string().uuid().brand<typeof DriverIdBrand>();
 type DriverId = z.infer<typeof DriverIdSchema>;
 
-const RequestIdSchema = z.string().uuid().brand<"RequestId">();
+export const RequestIdBrand = Symbol();
+const RequestIdSchema = z.string().uuid().brand<typeof RequestIdBrand>();
 type RequestId = z.infer<typeof RequestIdSchema>;
 
 // --- Branded Type Companion Objects ---

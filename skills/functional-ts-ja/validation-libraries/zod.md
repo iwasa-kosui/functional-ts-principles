@@ -14,7 +14,7 @@ import { z } from "zod";
 | `z.infer<typeof Schema>` | スキーマからTypeScript型を抽出 |
 | `schema.safeParse(raw)` | 例外をスローせず `{ success, data, error }` を返す |
 | `schema.parse(raw)` | パース済みデータを返すか `ZodError` をスロー |
-| `z.brand<"Name">()` | 出力型にnominalブランドを付与 |
+| `z.brand<typeof Brand>()` | 出力型にnominalブランドを付与（`unique symbol` を使用） |
 | `.transform(fn)` | パース済みの値を変換 |
 
 ## スキーマ定義
@@ -36,10 +36,12 @@ type CreateRequestInput = z.infer<typeof CreateRequestInput>;
 `z.brand()` でブランドを定義する。スキーマの出力型に自動的にブランドが付与されるため、`as` キャストが不要になる。
 
 ```typescript
-const UserIdSchema = z.string().uuid().brand<"UserId">();
+export const UserIdBrand = Symbol();
+const UserIdSchema = z.string().uuid().brand<typeof UserIdBrand>();
 type UserId = z.infer<typeof UserIdSchema>;
 
-const ProductIdSchema = z.string().uuid().brand<"ProductId">();
+export const ProductIdBrand = Symbol();
+const ProductIdSchema = z.string().uuid().brand<typeof ProductIdBrand>();
 type ProductId = z.infer<typeof ProductIdSchema>;
 
 // safeParse().data は既にブランド付き — `as` キャスト不要
@@ -48,7 +50,8 @@ type ProductId = z.infer<typeof ProductIdSchema>;
 ### Companion Objectパターン
 
 ```typescript
-const RequestIdSchema = z.string().uuid().brand<"RequestId">();
+export const RequestIdBrand = Symbol();
+const RequestIdSchema = z.string().uuid().brand<typeof RequestIdBrand>();
 type RequestId = z.infer<typeof RequestIdSchema>;
 
 const RequestId = {
@@ -78,3 +81,4 @@ const PatientSchema = z.object({
 - Railway Oriented Programmingとの統合には `parse` より `safeParse` を使う（スキーマファクトリーパターンは [boundary-defense.md](../boundary-defense.md) を参照）
 - boundary-defense.md のスキーマファクトリーは Standard Schema 準拠のため、Zodでもそのまま動作する
 - `z.brand()` により Branded Types で `as` キャストが不要になる
+- ブランドキーには文字列リテラルではなく `unique symbol`（`Symbol()` 経由）を使う — 文字列リテラルはカプセル化に欠け、オートコンプリートを汚染する

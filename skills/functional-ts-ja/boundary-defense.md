@@ -185,7 +185,8 @@ const ItemIdSchema = z.string().regex(/^item-\d+$/);
 const parse = (raw: string): ItemId => ItemIdSchema.parse(raw) as ItemId;
 
 // ✅ z.brand() — as 不要（Zodの例）
-const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
+export const ItemIdBrand = Symbol();
+const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<typeof ItemIdBrand>();
 type ItemId = z.infer<typeof ItemIdSchema>;
 const parse = (raw: string): ItemId => ItemIdSchema.parse(raw); // 既に ItemId 型
 ```

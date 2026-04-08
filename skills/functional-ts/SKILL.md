@@ -52,10 +52,12 @@ Group a type definition and its related functions under an object of the same na
 
 ```typescript
 // ❌ Standalone schema export — leaks implementation details
-export const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
+export const ItemIdBrand = Symbol();
+export const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<typeof ItemIdBrand>();
 
 // ✅ Companion object owns the schema
-const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
+const ItemIdBrand = Symbol();
+const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<typeof ItemIdBrand>();
 export type ItemId = z.infer<typeof ItemIdSchema>;
 
 export const ItemId = {
@@ -139,10 +141,12 @@ When using a validation library, define brands with its brand feature. The schem
 ```typescript
 import { z } from "zod";
 
-const UserIdSchema = z.string().uuid().brand<"UserId">();
+export const UserIdBrand = Symbol();
+const UserIdSchema = z.string().uuid().brand<typeof UserIdBrand>();
 type UserId = z.infer<typeof UserIdSchema>;
 
-const ProductIdSchema = z.string().uuid().brand<"ProductId">();
+export const ProductIdBrand = Symbol();
+const ProductIdSchema = z.string().uuid().brand<typeof ProductIdBrand>();
 type ProductId = z.infer<typeof ProductIdSchema>;
 
 // safeParse().data is already branded — no `as` cast needed
@@ -151,11 +155,11 @@ type ProductId = z.infer<typeof ProductIdSchema>;
 For projects not using a validation library, use the `unique symbol` pattern.
 
 ```typescript
-declare const UserIdBrand: unique symbol;
-type UserId = string & { readonly [UserIdBrand]: never };
+export const UserIdBrand = Symbol();
+type UserId = string & { readonly [typeof UserIdBrand]: never };
 
-declare const ProductIdBrand: unique symbol;
-type ProductId = string & { readonly [ProductIdBrand]: never };
+export const ProductIdBrand = Symbol();
+type ProductId = string & { readonly [typeof ProductIdBrand]: never };
 ```
 
 ### Ensure immutability with `Readonly<>`
