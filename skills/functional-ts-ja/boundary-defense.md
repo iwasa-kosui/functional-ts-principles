@@ -14,9 +14,17 @@ const user = { id: "1", role: "admin", email: "secret@example.com" };
 console.log(JSON.stringify(user satisfies LogPayload));
 ```
 
-## Zodによるバリデーション
+## スキーマベースのバリデーション
 
-外部境界（APIリクエスト、DB結果、環境変数、ファイル読み込み）ではZodスキーマでパースする。
+外部境界（APIリクエスト、DB結果、環境変数、ファイル読み込み）ではバリデーションライブラリのスキーマでパースする。
+
+**バリデーションライブラリの検出:** プロジェクトの `package.json` の `dependencies` / `devDependencies` を確認し、該当するライブラリのガイドに従う。いずれも見つからない場合はユーザーに確認する。
+
+- `zod` → [validation-libraries/zod.md](./validation-libraries/zod.md)
+- `valibot` → [validation-libraries/valibot.md](./validation-libraries/valibot.md)
+- `arktype` → [validation-libraries/arktype.md](./validation-libraries/arktype.md)
+
+以下の例はZodの構文を使用。ValibotとArkTypeの等価な構文は上記のバリデーションライブラリガイドを参照。
 
 ```typescript
 import { z } from "zod";
@@ -45,31 +53,34 @@ const parseInput = (raw: unknown): Result<CreateRequestInput, ValidationError> =
 };
 ```
 
-### スキーマファクトリ: `safeParse` → Result型の自動変換
+### スキーマファクトリ: バリデーション → Result型の自動変換
 
-上記の `safeParse` → Result型変換は全スキーマで同じパターンになる。毎回手書きせず、プロジェクトで使用するResult型ライブラリに合わせたスキーマファクトリを1つ定義し、各スキーマの `parse` 関数を自動生成する。
+上記のバリデーション → Result型変換は全スキーマで同じパターンになる。毎回手書きせず、プロジェクトで使用するResult型ライブラリに合わせたスキーマファクトリを1つ定義し、各スキーマの `parse` 関数を自動生成する。
+
+これらのファクトリは [Standard Schema](https://github.com/standard-schema/standard-schema) インタフェース（`schema['~standard'].validate()`）を使用するため、Standard Schema準拠の**あらゆる**ライブラリ（Zod、Valibot、ArkType等）でそのまま動作する。
 
 #### neverthrow の場合
 
 ```typescript
 import { ok, err, Result } from "neverthrow";
-import { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 type ValidationError = Readonly<{
   kind: "ValidationError";
-  issues: z.ZodIssue[];
+  issues: ReadonlyArray<StandardSchemaV1.Issue>;
 }>;
 
-const zodResult = <T>(schema: z.ZodType<T>) =>
+const schemaResult = <T>(schema: StandardSchemaV1<unknown, T>) =>
   (raw: unknown): Result<T, ValidationError> => {
-    const result = schema.safeParse(raw);
-    if (result.success) return ok(result.data);
-    return err({ kind: "ValidationError", issues: result.error.issues });
+    const result = schema["~standard"].validate(raw);
+    if (result instanceof Promise) throw new TypeError("Schema validation must be synchronous");
+    if (result.issues) return err({ kind: "ValidationError", issues: result.issues });
+    return ok(result.value);
   };
 
-// 使用例
-const parseCreateRequestInput = zodResult(CreateRequestInput);
-const parseRequestId = zodResult(RequestIdSchema);
+// 使用例 — Zod、Valibot、ArkType、またはStandard Schema準拠の任意のライブラリで動作
+const parseCreateRequestInput = schemaResult(CreateRequestInput);
+const parseRequestId = schemaResult(RequestIdSchema);
 
 // parse: (raw: unknown) => Result<CreateRequestInput, ValidationError>
 const result = parseCreateRequestInput(rawBody);
@@ -79,18 +90,19 @@ const result = parseCreateRequestInput(rawBody);
 
 ```typescript
 import * as E from "fp-ts/Either";
-import { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 type ValidationError = Readonly<{
   kind: "ValidationError";
-  issues: z.ZodIssue[];
+  issues: ReadonlyArray<StandardSchemaV1.Issue>;
 }>;
 
-const zodEither = <T>(schema: z.ZodType<T>) =>
+const schemaEither = <T>(schema: StandardSchemaV1<unknown, T>) =>
   (raw: unknown): E.Either<ValidationError, T> => {
-    const result = schema.safeParse(raw);
-    if (result.success) return E.right(result.data);
-    return E.left({ kind: "ValidationError", issues: result.error.issues });
+    const result = schema["~standard"].validate(raw);
+    if (result instanceof Promise) throw new TypeError("Schema validation must be synchronous");
+    if (result.issues) return E.left({ kind: "ValidationError", issues: result.issues });
+    return E.right(result.value);
   };
 ```
 
@@ -98,35 +110,54 @@ const zodEither = <T>(schema: z.ZodType<T>) =>
 
 ```typescript
 import { createOk, createErr, type Result } from "option-t/plain_result";
-import { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 type ValidationError = Readonly<{
   kind: "ValidationError";
-  issues: z.ZodIssue[];
+  issues: ReadonlyArray<StandardSchemaV1.Issue>;
 }>;
 
-const zodResult = <T>(schema: z.ZodType<T>) =>
+const schemaResult = <T>(schema: StandardSchemaV1<unknown, T>) =>
   (raw: unknown): Result<T, ValidationError> => {
-    const result = schema.safeParse(raw);
-    if (result.success) return createOk(result.data);
-    return createErr({ kind: "ValidationError", issues: result.error.issues });
+    const result = schema["~standard"].validate(raw);
+    if (result instanceof Promise) throw new TypeError("Schema validation must be synchronous");
+    if (result.issues) return createErr({ kind: "ValidationError", issues: result.issues });
+    return createOk(result.value);
+  };
+```
+
+#### byethrow の場合
+
+```typescript
+import { Result } from "@praha/byethrow";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
+type ValidationError = Readonly<{
+  kind: "ValidationError";
+  issues: ReadonlyArray<StandardSchemaV1.Issue>;
+}>;
+
+const schemaResult = <T>(schema: StandardSchemaV1<unknown, T>) =>
+  (raw: unknown): Result.Result<T, ValidationError> => {
+    const result = schema["~standard"].validate(raw);
+    if (result instanceof Promise) throw new TypeError("Schema validation must be synchronous");
+    if (result.issues) return Result.fail({ kind: "ValidationError", issues: result.issues });
+    return Result.succeed(result.value);
   };
 ```
 
 #### ガイドライン
 
-- スキーマごとに `safeParse` → Result変換を手書きしない。ファクトリ関数を1つ定義してプロジェクト全体で再利用する
+- スキーマごとにバリデーション → Result変換を手書きしない。ファクトリ関数を1つ定義してプロジェクト全体で再利用する
 - ファクトリの戻り値の型は、使用するResult型ライブラリの型に統一する
-- Branded Typesのスキーマ（`z.string().brand<"RequestId">()`）にも同じファクトリが適用できる
+- ファクトリはStandard Schemaを使用するため、Standard Schema準拠のバリデーションライブラリ（Zod、Valibot、ArkType）であれば同じファクトリが動作する
 - companion objectパターンと組み合わせ、スキーマ定義と `parse` 関数をまとめて公開する:
 
 ```typescript
-const RequestIdSchema = z.string().uuid().brand<"RequestId">();
-type RequestId = z.infer<typeof RequestIdSchema>;
-
+// Standard Schema準拠のバリデーションライブラリであれば動作する
 const RequestId = {
   schema: RequestIdSchema,
-  parse: zodResult(RequestIdSchema),
+  parse: schemaResult(RequestIdSchema),
 } as const;
 
 // 使用側
@@ -135,7 +166,7 @@ const id = RequestId.parse(raw); // Result<RequestId, ValidationError>
 
 ## 型アサーション（`as`）の禁止
 
-`as` は型チェックをバイパスする。外部データには Zod、内部データは型推論を信頼する。
+`as` は型チェックをバイパスする。外部データにはスキーマバリデーション、内部データは型推論を信頼する。
 
 ```typescript
 // Bad
@@ -145,7 +176,7 @@ const user = data as User;
 const user = UserSchema.parse(data);
 ```
 
-Branded Types についても `z.brand()` を使えば `as` は不要になる。
+Branded Types についても、バリデーションライブラリのブランド機能を使えば `as` は不要になる。[バリデーションライブラリガイド](./validation-libraries/)で、Valibot/ArkTypeのBranded Types構文を参照。
 
 ```typescript
 // ❌ 手動ブランド + as キャスト
@@ -153,13 +184,13 @@ type ItemId = string & { readonly __brand: unique symbol };
 const ItemIdSchema = z.string().regex(/^item-\d+$/);
 const parse = (raw: string): ItemId => ItemIdSchema.parse(raw) as ItemId;
 
-// ✅ z.brand() — as 不要
+// ✅ z.brand() — as 不要（Zodの例）
 const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
 type ItemId = z.infer<typeof ItemIdSchema>;
 const parse = (raw: string): ItemId => ItemIdSchema.parse(raw); // 既に ItemId 型
 ```
 
-Zodを使わないプロジェクトでは、Branded Types の生成関数内に限り `as` を許容する。
+バリデーションライブラリを使わないプロジェクトでは、Branded Types の生成関数内に限り `as` を許容する。
 
 ```typescript
 const UserId = {
@@ -194,9 +225,9 @@ const Sensitive = {
 } as const;
 ```
 
-### Zodとの統合
+### バリデーションライブラリとの統合
 
-パース時に自動でSensitiveラップする。
+パース時に自動でSensitiveラップする。以下はZodの例。ValibotとArkTypeの等価な構文は[バリデーションライブラリガイド](./validation-libraries/)を参照。
 
 ```typescript
 const sensitiveString = z.string().transform(Sensitive.of);

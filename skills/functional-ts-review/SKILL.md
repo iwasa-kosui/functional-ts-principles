@@ -37,7 +37,7 @@ Declaration merging with `interface` means that declaring an interface of the sa
 ### 4. Are there `as` type assertions?
 
 `as` bypasses type checking. Verify the following:
-- External data: is it parsed with a Zod schema?
+- External data: is it parsed with a validation schema (Zod, Valibot, or ArkType)?
 - `as` inside Branded Type factory functions: acceptable (the only exception)
 - Everything else: consider whether type inference can resolve it instead
 
@@ -53,9 +53,9 @@ The following are acceptable:
 
 If a `switch` branching on a Discriminated Union lacks `default: return assertNever(x)`, flag it. Without it, adding a new variant will not produce a compile error.
 
-### 7. Is there Zod validation at external boundaries?
+### 7. Is there schema validation at external boundaries?
 
-At external boundaries such as API handlers, DB result mapping, and config file loading, check that raw data is not treated as domain types without validation.
+At external boundaries such as API handlers, DB result mapping, and config file loading, check that raw data is not treated as domain types without validation. The project should use a validation library (Zod, Valibot, or ArkType) to parse external data.
 
 ### 8. Do PII fields have Sensitive wrappers?
 
@@ -94,7 +94,7 @@ Each checklist item has the following severity:
 |----------|------|--------|
 | High | `as` type assertions | Direct cause of runtime errors |
 | High | Unprotected PII | Risk of compliance violations |
-| High | Missing validation at external boundaries | Direct cause of runtime errors |
+| High | Missing schema validation at external boundaries | Direct cause of runtime errors |
 | Medium | Class usage | Reduced type safety when extended |
 | Medium | Use of throw | Consistency of error handling |
 | Medium | Missing assertNever | Overlooked cases when new variants are added |
