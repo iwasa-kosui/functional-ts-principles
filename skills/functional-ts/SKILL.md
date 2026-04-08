@@ -48,7 +48,7 @@ Use `kind` as the discriminant property name throughout the entire project. Mixi
 
 ### Companion Object Pattern
 
-Group a type definition and its related functions under an object of the same name. Branded Type Zod schemas should be exposed as a `schema` property on the companion object, not as standalone exports.
+Group a type definition and its related functions under an object of the same name. Branded Type validation schemas should be exposed as a `schema` property on the companion object, not as standalone exports.
 
 ```typescript
 // ❌ Standalone schema export — leaks implementation details
@@ -128,7 +128,13 @@ type TaskRepository = {
 
 Due to structural subtyping, two `string` values are compatible. Apply Branded Types to IDs and values with different semantic meanings.
 
-When using Zod, define brands with `z.brand()`. The schema output type becomes automatically branded, eliminating the need for `as` casts.
+**Validation library detection:** Check `dependencies` / `devDependencies` in the project's `package.json` and follow the guide for the matching library. If none are found, ask the user.
+
+- `zod` → [validation-libraries/zod.md](./validation-libraries/zod.md)
+- `valibot` → [validation-libraries/valibot.md](./validation-libraries/valibot.md)
+- `arktype` → [validation-libraries/arktype.md](./validation-libraries/arktype.md)
+
+When using a validation library, define brands with its brand feature. The schema output type becomes automatically branded, eliminating the need for `as` casts. The following example uses Zod:
 
 ```typescript
 import { z } from "zod";
@@ -142,7 +148,7 @@ type ProductId = z.infer<typeof ProductIdSchema>;
 // safeParse().data is already branded — no `as` cast needed
 ```
 
-For projects not using Zod, use the `unique symbol` pattern.
+For projects not using a validation library, use the `unique symbol` pattern.
 
 ```typescript
 declare const UserIdBrand: unique symbol;
@@ -234,7 +240,7 @@ Details: [error-handling.md](./error-handling.md)
 
 ## 4. Boundary Defense
 
-Validate external inputs (API requests, DB results, file reads) with Zod schemas at runtime. Trust types inside the domain layer and avoid excessive defensive validation.
+Validate external inputs (API requests, DB results, file reads) with validation library schemas at runtime. Trust types inside the domain layer and avoid excessive defensive validation. For validation library-specific syntax, see the [validation library guides](./validation-libraries/) linked in the Branded Types section above.
 
 ```typescript
 import { z } from "zod";
@@ -253,7 +259,7 @@ const handler = (req: Request) => {
 
 ### Do not use type assertions (`as`)
 
-`as` bypasses type checks and causes runtime errors. Use Zod parsing for external data; trust type inference for internal data.
+`as` bypasses type checks and causes runtime errors. Use schema parsing for external data; trust type inference for internal data.
 
 ### PII Protection
 
@@ -276,7 +282,7 @@ const Sensitive = {
 } as const;
 ```
 
-Auto-wrap using a Zod schema.
+Auto-wrap using a validation schema. The following example uses Zod; see the [validation library guides](./validation-libraries/) for Valibot and ArkType equivalents.
 
 ```typescript
 const sensitiveString = z.string().transform(Sensitive.of);

@@ -14,9 +14,17 @@ const user = { id: "1", role: "admin", email: "secret@example.com" };
 console.log(JSON.stringify(user satisfies LogPayload));
 ```
 
-## Validation with Zod
+## Schema-Based Validation
 
-At external boundaries (API requests, DB results, environment variables, file reads), parse with Zod schemas.
+At external boundaries (API requests, DB results, environment variables, file reads), parse with validation library schemas at runtime.
+
+**Validation library detection:** Check `dependencies` / `devDependencies` in the project's `package.json` and follow the guide for the matching library. If none are found, ask the user.
+
+- `zod` → [validation-libraries/zod.md](./validation-libraries/zod.md)
+- `valibot` → [validation-libraries/valibot.md](./validation-libraries/valibot.md)
+- `arktype` → [validation-libraries/arktype.md](./validation-libraries/arktype.md)
+
+The following examples use Zod syntax. See the validation library guides above for Valibot and ArkType equivalents.
 
 ```typescript
 import { z } from "zod";
@@ -45,31 +53,34 @@ const parseInput = (raw: unknown): Result<CreateRequestInput, ValidationError> =
 };
 ```
 
-### Schema Factory: Automatic `safeParse` → Result Type Conversion
+### Schema Factory: Automatic Validation → Result Type Conversion
 
-The `safeParse` → Result type conversion above follows the same pattern for every schema. Rather than writing it by hand each time, define a single schema factory that matches the Result type library used in the project, and auto-generate `parse` functions for each schema.
+The validation → Result type conversion follows the same pattern for every schema. Rather than writing it by hand each time, define a single schema factory that matches the Result type library used in the project, and auto-generate `parse` functions for each schema.
+
+These factories use the [Standard Schema](https://github.com/standard-schema/standard-schema) interface (`schema['~standard'].validate()`), so they work with **any** Standard Schema-compliant library (Zod, Valibot, ArkType, etc.) without modification.
 
 #### For neverthrow
 
 ```typescript
 import { ok, err, Result } from "neverthrow";
-import { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 type ValidationError = Readonly<{
   kind: "ValidationError";
-  issues: z.ZodIssue[];
+  issues: ReadonlyArray<StandardSchemaV1.Issue>;
 }>;
 
-const zodResult = <T>(schema: z.ZodType<T>) =>
+const schemaResult = <T>(schema: StandardSchemaV1<unknown, T>) =>
   (raw: unknown): Result<T, ValidationError> => {
-    const result = schema.safeParse(raw);
-    if (result.success) return ok(result.data);
-    return err({ kind: "ValidationError", issues: result.error.issues });
+    const result = schema["~standard"].validate(raw);
+    if (result instanceof Promise) throw new TypeError("Schema validation must be synchronous");
+    if (result.issues) return err({ kind: "ValidationError", issues: result.issues });
+    return ok(result.value);
   };
 
-// Usage
-const parseCreateRequestInput = zodResult(CreateRequestInput);
-const parseRequestId = zodResult(RequestIdSchema);
+// Usage — works with Zod, Valibot, ArkType, or any Standard Schema-compliant library
+const parseCreateRequestInput = schemaResult(CreateRequestInput);
+const parseRequestId = schemaResult(RequestIdSchema);
 
 // parse: (raw: unknown) => Result<CreateRequestInput, ValidationError>
 const result = parseCreateRequestInput(rawBody);
@@ -79,18 +90,19 @@ const result = parseCreateRequestInput(rawBody);
 
 ```typescript
 import * as E from "fp-ts/Either";
-import { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 type ValidationError = Readonly<{
   kind: "ValidationError";
-  issues: z.ZodIssue[];
+  issues: ReadonlyArray<StandardSchemaV1.Issue>;
 }>;
 
-const zodEither = <T>(schema: z.ZodType<T>) =>
+const schemaEither = <T>(schema: StandardSchemaV1<unknown, T>) =>
   (raw: unknown): E.Either<ValidationError, T> => {
-    const result = schema.safeParse(raw);
-    if (result.success) return E.right(result.data);
-    return E.left({ kind: "ValidationError", issues: result.error.issues });
+    const result = schema["~standard"].validate(raw);
+    if (result instanceof Promise) throw new TypeError("Schema validation must be synchronous");
+    if (result.issues) return E.left({ kind: "ValidationError", issues: result.issues });
+    return E.right(result.value);
   };
 ```
 
@@ -98,35 +110,54 @@ const zodEither = <T>(schema: z.ZodType<T>) =>
 
 ```typescript
 import { createOk, createErr, type Result } from "option-t/plain_result";
-import { z } from "zod";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 type ValidationError = Readonly<{
   kind: "ValidationError";
-  issues: z.ZodIssue[];
+  issues: ReadonlyArray<StandardSchemaV1.Issue>;
 }>;
 
-const zodResult = <T>(schema: z.ZodType<T>) =>
+const schemaResult = <T>(schema: StandardSchemaV1<unknown, T>) =>
   (raw: unknown): Result<T, ValidationError> => {
-    const result = schema.safeParse(raw);
-    if (result.success) return createOk(result.data);
-    return createErr({ kind: "ValidationError", issues: result.error.issues });
+    const result = schema["~standard"].validate(raw);
+    if (result instanceof Promise) throw new TypeError("Schema validation must be synchronous");
+    if (result.issues) return createErr({ kind: "ValidationError", issues: result.issues });
+    return createOk(result.value);
+  };
+```
+
+#### For byethrow
+
+```typescript
+import { Result } from "@praha/byethrow";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
+type ValidationError = Readonly<{
+  kind: "ValidationError";
+  issues: ReadonlyArray<StandardSchemaV1.Issue>;
+}>;
+
+const schemaResult = <T>(schema: StandardSchemaV1<unknown, T>) =>
+  (raw: unknown): Result.Result<T, ValidationError> => {
+    const result = schema["~standard"].validate(raw);
+    if (result instanceof Promise) throw new TypeError("Schema validation must be synchronous");
+    if (result.issues) return Result.fail({ kind: "ValidationError", issues: result.issues });
+    return Result.succeed(result.value);
   };
 ```
 
 #### Guidelines
 
-- Do not hand-write `safeParse` → Result conversions for each schema. Define a single factory function and reuse it across the project
+- Do not hand-write validation → Result conversions for each schema. Define a single factory function and reuse it across the project
 - Unify the return type of the factory to the Result type library in use
-- The same factory can be applied to Branded Type schemas (`z.string().brand<"RequestId">()`)
+- The factory uses Standard Schema so it works with any compliant validation library (Zod, Valibot, ArkType)
 - Combine with the companion object pattern to expose the schema definition and `parse` function together:
 
 ```typescript
-const RequestIdSchema = z.string().uuid().brand<"RequestId">();
-type RequestId = z.infer<typeof RequestIdSchema>;
-
+// Works with any Standard Schema-compliant validation library
 const RequestId = {
   schema: RequestIdSchema,
-  parse: zodResult(RequestIdSchema),
+  parse: schemaResult(RequestIdSchema),
 } as const;
 
 // Usage
@@ -135,7 +166,7 @@ const id = RequestId.parse(raw); // Result<RequestId, ValidationError>
 
 ## Banning Type Assertions (`as`)
 
-`as` bypasses type checking. Use Zod for external data; trust type inference for internal data.
+`as` bypasses type checking. Use schema validation for external data; trust type inference for internal data.
 
 ```typescript
 // Bad
@@ -145,7 +176,7 @@ const user = data as User;
 const user = UserSchema.parse(data);
 ```
 
-For Branded Types, using `z.brand()` eliminates the need for `as`.
+For Branded Types, using the validation library's brand feature eliminates the need for `as`. See the [validation library guides](./validation-libraries/) for library-specific syntax (e.g., `z.brand()` for Zod, `v.brand()` for Valibot, `.brand()` for ArkType).
 
 ```typescript
 // ❌ Manual brand + as cast
@@ -153,13 +184,13 @@ type ItemId = string & { readonly __brand: unique symbol };
 const ItemIdSchema = z.string().regex(/^item-\d+$/);
 const parse = (raw: string): ItemId => ItemIdSchema.parse(raw) as ItemId;
 
-// ✅ z.brand() — no as needed
+// ✅ z.brand() — no as needed (Zod example)
 const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
 type ItemId = z.infer<typeof ItemIdSchema>;
 const parse = (raw: string): ItemId => ItemIdSchema.parse(raw); // already ItemId type
 ```
 
-In projects that do not use Zod, `as` is permitted only inside Branded Type constructor functions.
+In projects that do not use a validation library, `as` is permitted only inside Branded Type constructor functions.
 
 ```typescript
 const UserId = {
@@ -194,9 +225,9 @@ const Sensitive = {
 } as const;
 ```
 
-### Integration with Zod
+### Integration with Validation Libraries
 
-Automatically wrap in Sensitive at parse time.
+Automatically wrap in Sensitive at parse time. The following example uses Zod. See the [validation library guides](./validation-libraries/) for Valibot and ArkType equivalents.
 
 ```typescript
 const sensitiveString = z.string().transform(Sensitive.of);

@@ -48,7 +48,7 @@ type TaxiRequest = {
 
 ### Companion Objectパターン
 
-型定義と関連する関数を同名のオブジェクトにまとめる。Branded Types の Zod スキーマは、スタンドアロンの export ではなく companion object の `schema` プロパティとして公開する。
+型定義と関連する関数を同名のオブジェクトにまとめる。Branded Types のバリデーションスキーマは、スタンドアロンの export ではなく companion object の `schema` プロパティとして公開する。
 
 ```typescript
 // ❌ スキーマを単独 export — 実装詳細の漏洩
@@ -128,7 +128,13 @@ type TaskRepository = {
 
 構造的部分型により `string` 同士は互換になる。意味の異なるIDや値にはBranded Typeを適用する。
 
-Zodを使っている場合は `z.brand()` で定義する。スキーマの出力型が自動的にブランド付きになるため、`as` キャストが不要になる。
+**バリデーションライブラリの検出:** プロジェクトの `package.json` の `dependencies` / `devDependencies` を確認し、該当するライブラリのガイドに従う。いずれも見つからない場合はユーザーに確認する。
+
+- `zod` → [validation-libraries/zod.md](./validation-libraries/zod.md)
+- `valibot` → [validation-libraries/valibot.md](./validation-libraries/valibot.md)
+- `arktype` → [validation-libraries/arktype.md](./validation-libraries/arktype.md)
+
+バリデーションライブラリを使っている場合は、そのブランド機能で定義する。スキーマの出力型が自動的にブランド付きになるため、`as` キャストが不要になる。以下はZodの例:
 
 ```typescript
 import { z } from "zod";
@@ -142,7 +148,7 @@ type ProductId = z.infer<typeof ProductIdSchema>;
 // safeParse().data は既にブランド付き — as 不要
 ```
 
-Zodを使わないプロジェクトでは `unique symbol` パターンを使う。
+バリデーションライブラリを使わないプロジェクトでは `unique symbol` パターンを使う。
 
 ```typescript
 declare const UserIdBrand: unique symbol;
@@ -234,7 +240,7 @@ type AssignError =
 
 ## 4. 境界の防御
 
-外部入力（APIリクエスト、DB結果、ファイル読み込み）はZodスキーマでランタイムバリデーションする。ドメイン層内部では型を信頼し、過剰な防御的バリデーションをしない。
+外部入力（APIリクエスト、DB結果、ファイル読み込み）はバリデーションライブラリのスキーマでランタイムバリデーションする。ドメイン層内部では型を信頼し、過剰な防御的バリデーションをしない。バリデーションライブラリ固有の構文は、Branded Typesセクションでリンクした[バリデーションライブラリガイド](./validation-libraries/)を参照。
 
 ```typescript
 import { z } from "zod";
@@ -253,7 +259,7 @@ const handler = (req: Request) => {
 
 ### 型アサーション（`as`）を使わない
 
-`as` は型チェックをバイパスし、ランタイムエラーの原因になる。外部データにはZodパース、内部データは型推論を信頼する。
+`as` は型チェックをバイパスし、ランタイムエラーの原因になる。外部データにはスキーマパース、内部データは型推論を信頼する。
 
 ### PIIの防御
 
@@ -276,7 +282,7 @@ const Sensitive = {
 } as const;
 ```
 
-Zodスキーマで自動ラップする。
+バリデーションスキーマで自動ラップする。以下はZodの例。ValibotとArkTypeの等価な構文は[バリデーションライブラリガイド](./validation-libraries/)を参照。
 
 ```typescript
 const sensitiveString = z.string().transform(Sensitive.of);
