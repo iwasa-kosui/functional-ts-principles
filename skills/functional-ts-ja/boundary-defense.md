@@ -1,22 +1,22 @@
-# Boundary Defense Detailed Guide
+# 境界防御の詳細ガイド
 
-## Understanding the Limits of TypeScript's Type System
+## TypeScriptの型の限界を理解する
 
-TypeScript's types are erased at compile time. Because no type information remains at runtime, the correctness of externally incoming data cannot be guaranteed by types alone.
+TypeScriptの型はコンパイル時に消去される。ランタイムには型情報が残らないため、外部から入ってくるデータの正しさは型だけでは保証できない。
 
-Structural subtyping allows objects with extra properties to be assigned to types with fewer properties. This can be a source of unintended data leakage.
+構造的部分型により、余分なプロパティを持つオブジェクトは少ないプロパティの型に代入できる。これが意図しないデータ漏洩の原因になる。
 
 ```typescript
 type LogPayload = { id: string; role: string };
 const user = { id: "1", role: "admin", email: "secret@example.com" };
 
-// Passes type check, but email is included in the log
+// 型チェックは通るが、emailがログに含まれる
 console.log(JSON.stringify(user satisfies LogPayload));
 ```
 
-## Validation with Zod
+## Zodによるバリデーション
 
-At external boundaries (API requests, DB results, environment variables, file reads), parse with Zod schemas.
+外部境界（APIリクエスト、DB結果、環境変数、ファイル読み込み）ではZodスキーマでパースする。
 
 ```typescript
 import { z } from "zod";
@@ -32,24 +32,24 @@ const CreateRequestInput = z.object({
 type CreateRequestInput = z.infer<typeof CreateRequestInput>;
 ```
 
-### Use `safeParse`
+### `safeParse` を使う
 
-`parse` throws an exception. For integration with Railway Oriented Programming, use `safeParse` and convert the result to a Result type.
+`parse` は例外をスローする。Railway Oriented Programmingとの統合には `safeParse` を使い、結果をResult型に変換する。
 
 ```typescript
-// Convert the safeParse result to the Result type library used in the project
+// safeParse の結果をプロジェクトで使用しているResult型ライブラリに変換する
 const parseInput = (raw: unknown): Result<CreateRequestInput, ValidationError> => {
   const result = CreateRequestInput.safeParse(raw);
-  if (result.success) return success(result.data);  // ok(), right(), createOk(), etc.
+  if (result.success) return success(result.data);  // ok(), right(), createOk() 等
   return failure({ kind: "ValidationError", issues: result.error.issues });
 };
 ```
 
-### Schema Factory: Automatic `safeParse` → Result Type Conversion
+### スキーマファクトリ: `safeParse` → Result型の自動変換
 
-The `safeParse` → Result type conversion above follows the same pattern for every schema. Rather than writing it by hand each time, define a single schema factory that matches the Result type library used in the project, and auto-generate `parse` functions for each schema.
+上記の `safeParse` → Result型変換は全スキーマで同じパターンになる。毎回手書きせず、プロジェクトで使用するResult型ライブラリに合わせたスキーマファクトリを1つ定義し、各スキーマの `parse` 関数を自動生成する。
 
-#### For neverthrow
+#### neverthrow の場合
 
 ```typescript
 import { ok, err, Result } from "neverthrow";
@@ -67,7 +67,7 @@ const zodResult = <T>(schema: z.ZodType<T>) =>
     return err({ kind: "ValidationError", issues: result.error.issues });
   };
 
-// Usage
+// 使用例
 const parseCreateRequestInput = zodResult(CreateRequestInput);
 const parseRequestId = zodResult(RequestIdSchema);
 
@@ -75,7 +75,7 @@ const parseRequestId = zodResult(RequestIdSchema);
 const result = parseCreateRequestInput(rawBody);
 ```
 
-#### For fp-ts
+#### fp-ts の場合
 
 ```typescript
 import * as E from "fp-ts/Either";
@@ -94,7 +94,7 @@ const zodEither = <T>(schema: z.ZodType<T>) =>
   };
 ```
 
-#### For option-t
+#### option-t の場合
 
 ```typescript
 import { createOk, createErr, type Result } from "option-t/plain_result";
@@ -113,12 +113,12 @@ const zodResult = <T>(schema: z.ZodType<T>) =>
   };
 ```
 
-#### Guidelines
+#### ガイドライン
 
-- Do not hand-write `safeParse` → Result conversions for each schema. Define a single factory function and reuse it across the project
-- Unify the return type of the factory to the Result type library in use
-- The same factory can be applied to Branded Type schemas (`z.string().brand<"RequestId">()`)
-- Combine with the companion object pattern to expose the schema definition and `parse` function together:
+- スキーマごとに `safeParse` → Result変換を手書きしない。ファクトリ関数を1つ定義してプロジェクト全体で再利用する
+- ファクトリの戻り値の型は、使用するResult型ライブラリの型に統一する
+- Branded Typesのスキーマ（`z.string().brand<"RequestId">()`）にも同じファクトリが適用できる
+- companion objectパターンと組み合わせ、スキーマ定義と `parse` 関数をまとめて公開する:
 
 ```typescript
 const RequestIdSchema = z.string().uuid().brand<"RequestId">();
@@ -129,13 +129,13 @@ const RequestId = {
   parse: zodResult(RequestIdSchema),
 } as const;
 
-// Usage
+// 使用側
 const id = RequestId.parse(raw); // Result<RequestId, ValidationError>
 ```
 
-## Banning Type Assertions (`as`)
+## 型アサーション（`as`）の禁止
 
-`as` bypasses type checking. Use Zod for external data; trust type inference for internal data.
+`as` は型チェックをバイパスする。外部データには Zod、内部データは型推論を信頼する。
 
 ```typescript
 // Bad
@@ -145,37 +145,37 @@ const user = data as User;
 const user = UserSchema.parse(data);
 ```
 
-For Branded Types, using `z.brand()` eliminates the need for `as`.
+Branded Types についても `z.brand()` を使えば `as` は不要になる。
 
 ```typescript
-// ❌ Manual brand + as cast
+// ❌ 手動ブランド + as キャスト
 type ItemId = string & { readonly __brand: unique symbol };
 const ItemIdSchema = z.string().regex(/^item-\d+$/);
 const parse = (raw: string): ItemId => ItemIdSchema.parse(raw) as ItemId;
 
-// ✅ z.brand() — no as needed
+// ✅ z.brand() — as 不要
 const ItemIdSchema = z.string().regex(/^item-\d+$/).brand<"ItemId">();
 type ItemId = z.infer<typeof ItemIdSchema>;
-const parse = (raw: string): ItemId => ItemIdSchema.parse(raw); // already ItemId type
+const parse = (raw: string): ItemId => ItemIdSchema.parse(raw); // 既に ItemId 型
 ```
 
-In projects that do not use Zod, `as` is permitted only inside Branded Type constructor functions.
+Zodを使わないプロジェクトでは、Branded Types の生成関数内に限り `as` を許容する。
 
 ```typescript
 const UserId = {
-  of: (value: string): UserId => value as UserId, // permitted only when not using Zod
+  of: (value: string): UserId => value as UserId, // Zod未使用時のみ許容
 };
 ```
 
-## PII Protection with the Sensitive Type
+## Sensitive型によるPII防御
 
-### Problem
+### 問題
 
-TypeScript types are erased at runtime, so marking something as PII in the type system does not prevent leakage via `JSON.stringify` or `console.log`. Even with Branded Types, the brand is lost on variable assignment.
+TypeScriptの型はランタイムで消えるため、型で「PIIだ」とマークしても `JSON.stringify` や `console.log` で漏洩する。Branded Typeでも変数代入時にブランドが失われる。
 
-### Solution: Closure-Based Wrapper
+### 解決策: クロージャベースのラッパー
 
-Enclose the value in a function closure and automatically mask it during serialization.
+値を関数クロージャに閉じ込め、シリアライズ時に自動マスクする。
 
 ```typescript
 type Sensitive<T> = Readonly<{
@@ -194,9 +194,9 @@ const Sensitive = {
 } as const;
 ```
 
-### Integration with Zod
+### Zodとの統合
 
-Automatically wrap in Sensitive at parse time.
+パース時に自動でSensitiveラップする。
 
 ```typescript
 const sensitiveString = z.string().transform(Sensitive.of);
@@ -206,7 +206,7 @@ const PatientSchema = z.object({
   name: sensitiveString,
   email: sensitiveString,
   diagnosis: sensitiveString,
-  role: z.string(), // not PII
+  role: z.string(), // PIIではない
 });
 
 const patient = PatientSchema.parse(rawData);
@@ -214,9 +214,9 @@ console.log(JSON.stringify(patient));
 // {"id":"...","name":"[REDACTED]","email":"[REDACTED]","diagnosis":"[REDACTED]","role":"doctor"}
 ```
 
-### Defense in Depth: Pino Redaction
+### 多層防御: Pinoのredaction
 
-As a backup for missed Sensitive wrapper applications, also configure redaction at the logger level.
+Sensitiveラッパーの適用漏れに備え、ロガーレベルでもredactionを設定する。
 
 ```typescript
 import pino from "pino";
@@ -229,19 +229,19 @@ const logger = pino({
 });
 ```
 
-## Do Not Over-Defend Inside the Domain
+## ドメイン内部では過剰防御しない
 
-Data that has been validated at the external boundary should not be re-validated inside the domain layer. Trust the types.
+外部境界でバリデーション済みのデータは、ドメイン層内部で再度バリデーションしない。型を信頼する。
 
 ```typescript
-// Bad: redundant checks in the domain layer
+// Bad: ドメイン層で冗長なチェック
 const assignDriver = (waiting: Waiting, driverId: DriverId): EnRoute => {
-  if (waiting.kind !== "Waiting") throw new Error("Invalid state"); // the type already guarantees this
-  if (!driverId) throw new Error("Missing driverId"); // the type already guarantees this
+  if (waiting.kind !== "Waiting") throw new Error("Invalid state"); // 型が保証している
+  if (!driverId) throw new Error("Missing driverId"); // 型が保証している
   return { kind: "EnRoute", passengerId: waiting.passengerId, driverId };
 };
 
-// Good: trust the types
+// Good: 型を信頼する
 const assignDriver = (waiting: Waiting, driverId: DriverId): EnRoute => ({
   kind: "EnRoute",
   passengerId: waiting.passengerId,

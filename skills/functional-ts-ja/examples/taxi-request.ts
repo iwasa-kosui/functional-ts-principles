@@ -1,8 +1,8 @@
 /**
- * State transition model for taxi dispatch requests
+ * タクシー配車リクエストの状態遷移モデル
  *
- * A practical example of state transitions using Discriminated Union + Companion Object + pure functions.
- * Invalid transitions are detected as compile errors.
+ * Discriminated Union + Companion Object + 純粋関数による状態遷移の実例。
+ * 無効な遷移はコンパイルエラーで検出される。
  */
 
 // --- Branded Types (z.brand) ---

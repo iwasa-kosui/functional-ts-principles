@@ -1,46 +1,52 @@
+> 日本語版: [README.ja.md](README.ja.md)
+
 # functional-ts-principles
 
-サーバーサイドTypeScriptで関数型ドメインモデリングを実践するための原則を、コーディングエージェント向けスキルプラグインとして提供する。
+Provides principles for practicing functional domain modeling in server-side TypeScript as skill plugins for coding agents.
 
-## 原則の概要
+## Overview of Principles
 
-- **Discriminated Union** でドメインの状態を表現し、classを避ける
-- **純粋関数** で状態遷移を定義し、無効な遷移をコンパイルエラーにする
-- **Result型** (neverthrow / byethrow / fp-ts / option-t) でエラーを値として扱い、例外のthrowを避ける
-- **Zod** で外部境界をバリデーションし、ドメイン内部では型を信頼する
-- **Sensitive型** でPIIをランタイムレベルで保護する
+- Represent domain state with **Discriminated Unions**, avoiding classes
+- Define state transitions with **pure functions**, making invalid transitions compile errors
+- Handle errors as values with **Result types** (neverthrow / byethrow / fp-ts / option-t), avoiding thrown exceptions
+- Validate external boundaries with **Zod**, trusting types inside the domain
+- Protect PII at runtime with the **Sensitive type**
 
-## インストール
+## Installation
 
 ```bash
 npx skills add iwasa-kosui/functional-ts-principles
 ```
 
-## 提供スキル
+## Provided Skills
 
 ### `functional-ts`
 
-TypeScriptのサーバーサイドコード（ドメインモデル、ユースケース、リポジトリ）を書くときに自動トリガーされる。原則に沿ったコード生成をガイドする。
+Automatically triggered when writing server-side TypeScript code (domain models, use cases, repositories). Guides code generation following the principles.
 
 ### `functional-ts-review`
 
-コードレビュー時にトリガーされる。原則に反するコードパターン（class使用、型アサーション、例外throw、PII未保護など）を検出し、修正案を提示する。
+Triggered during code review. Detects code patterns that violate the principles (class usage, type assertions, thrown exceptions, unprotected PII, etc.) and suggests fixes.
 
-## 参考記事
+### `functional-ts-ja` / `functional-ts-review-ja`
 
-これらの原則は以下の記事群に基づいている:
+Japanese versions of the above skills.
 
-- [複雑な状態遷移: クラスではなく関数とDiscriminated Unionで状態の定義と遷移を表現する](https://kosui.me/posts/2025/02/20/005900)
-- [Discriminated Unionを利用したStateパターンの実現](https://kosui.me/posts/2025/02/25/021320)
-- [TypeScriptでドメインイベントを容易に記録できるコード設計を考える](https://kosui.me/posts/2025/05/06/142842)
-- [なぜTypeScriptでメソッド記法を避けるべきか？](https://kosui.me/posts/2025/06/02/221656)
-- [私がTypeScriptで interface よりも type を好む理由](https://kosui.me/posts/2025/10/23/214710)
-- [ログのPII漏洩を防止する: TypeScriptの型推論とランタイムの境界](https://kosui.me/posts/2026/03/16/typescript-pii-logging-defense)
-- [サーバーサイドTypeScriptの型システムをどう教えるか](https://kakehashi-dev.hatenablog.com/entry/2026/03/31/110000)
-- [TypeScriptのテストにはas const satisfiesが便利です](https://kakehashi-dev.hatenablog.com/entry/2025/12/14/110000)
-- [TypeScriptの宣言的な配列操作](https://kakehashi-dev.hatenablog.com/entry/2025/11/19/110000)
-- [他言語経験者が知っておきたいTypeScriptのクラスの注意点](https://kakehashi-dev.hatenablog.com/entry/2025/08/19/110000)
+## Reference Articles
 
-## ライセンス
+These principles are based on the following articles:
+
+- [Complex state transitions: Expressing state definitions and transitions with functions and Discriminated Unions instead of classes](https://kosui.me/posts/2025/02/20/005900)
+- [Implementing the State pattern with Discriminated Unions](https://kosui.me/posts/2025/02/25/021320)
+- [Designing TypeScript code for easy domain event recording](https://kosui.me/posts/2025/05/06/142842)
+- [Why you should avoid method notation in TypeScript](https://kosui.me/posts/2025/06/02/221656)
+- [Why I prefer type over interface in TypeScript](https://kosui.me/posts/2025/10/23/214710)
+- [Preventing PII leaks in logs: TypeScript type inference and runtime boundaries](https://kosui.me/posts/2026/03/16/typescript-pii-logging-defense)
+- [How to teach server-side TypeScript's type system](https://kakehashi-dev.hatenablog.com/entry/2026/03/31/110000)
+- [as const satisfies is useful for TypeScript tests](https://kakehashi-dev.hatenablog.com/entry/2025/12/14/110000)
+- [Declarative array operations in TypeScript](https://kakehashi-dev.hatenablog.com/entry/2025/11/19/110000)
+- [TypeScript class pitfalls for developers from other languages](https://kakehashi-dev.hatenablog.com/entry/2025/08/19/110000)
+
+## License
 
 MIT

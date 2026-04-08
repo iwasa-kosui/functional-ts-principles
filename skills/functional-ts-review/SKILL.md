@@ -5,79 +5,80 @@ description: Use when reviewing TypeScript server-side code for adherence to fun
 
 # Functional TypeScript Code Review
 
-サーバーサイドTypeScriptコードを関数型ドメインモデリング原則に照らしてレビューする。
+Review server-side TypeScript code against functional domain modeling principles.
 
-## レビュー手順
+## Review Procedure
 
-1. 変更対象のファイルを読む
-2. 以下のチェック項目を順にスキャンする
-3. 違反を発見した場合、原則と理由を添えて指摘する
-4. 違反ではないが改善余地がある場合は提案として伝える
+1. Read the files under review
+2. Scan through the checklist items below in order
+3. When a violation is found, report it with the relevant principle and the reason it matters
+4. When something is not a violation but has room for improvement, communicate it as a suggestion
 
-## チェック項目
+## Checklist
 
-### 1. ドメインモデルにclassを使っていないか
+### 1. Are classes used for domain models?
 
-ドメインエンティティ・値オブジェクトの定義に `class` を使っている場合、Discriminated Union + Companion Objectパターンへの変更を提案する。
+If `class` is used to define domain entities or value objects, suggest migrating to the Discriminated Union + Companion Object pattern.
 
-外部ライブラリがclass継承を要求している場合は正当な逸脱。
+Using class inheritance required by an external library is a legitimate exception.
 
-### 2. メソッド記法を使っていないか
+### 2. Is method notation used?
 
-型定義内の関数がメソッド記法（`save(task: Task): Promise<void>`）になっている場合、関数プロパティ記法（`save: (task: Task) => Promise<void>`）への変更を指摘する。
+If functions inside type definitions use method notation (`save(task: Task): Promise<void>`), flag it and suggest function property notation (`save: (task: Task) => Promise<void>`).
 
-メソッド記法はパラメータ型がbivariantになり、依存注入時に狭い型の実装が型チェックを通過してしまう。
+Method notation makes parameter types bivariant, allowing a narrower implementation (e.g., `save(task: DoingTask): Promise<void>`) to pass type checking at dependency injection sites.
 
-### 3. ドメイン型に `interface` を使っていないか
+### 3. Is `interface` used for domain types?
 
-`interface` のdeclaration mergingは、別ファイルで同名のinterfaceを宣言するだけで型の形状が暗黙的に変わる。ドメイン型は `type` で定義する。
+Declaration merging with `interface` means that declaring an interface of the same name in another file silently alters the type's shape. Domain types should be defined with `type`.
 
-ライブラリの型拡張（augmentation）には `interface` が必要。これは正当な用途。
+`interface` is required for library type augmentation, which is a legitimate use case.
 
-### 4. `as` による型アサーションがないか
+### 4. Are there `as` type assertions?
 
-`as` は型チェックをバイパスする。以下を確認する:
-- 外部データ: Zodスキーマでパースしているか
-- Branded Type生成関数内の `as`: 許容（唯一の例外）
-- それ以外: 型推論で解決できないか検討
+`as` bypasses type checking. Verify the following:
+- External data: is it parsed with a Zod schema?
+- `as` inside Branded Type factory functions: acceptable (the only exception)
+- Everything else: consider whether type inference can resolve it instead
 
-### 5. ドメイン層で例外をthrowしていないか
+### 5. Are exceptions thrown in the domain layer?
 
-ドメイン層（エンティティ、ユースケース）で `throw` を使っている場合、`Result` 型への変更を提案する。
+If `throw` is used in the domain layer (entities, use cases), suggest migrating to the `Result` type.
 
-以下は許容:
-- `assertNever` 内の throw（到達不能コードの検出）
-- インフラ層の予期しない障害
+The following are acceptable:
+- `throw` inside `assertNever` (unreachable code detection)
+- Unexpected failures in the infrastructure layer
 
-### 6. switch文に assertNever があるか
+### 6. Do switch statements have assertNever?
 
-Discriminated Unionを `switch` で分岐している箇所に `default: return assertNever(x)` がない場合、追加を指摘する。新しいバリアントが追加されたときにコンパイルエラーで検出できなくなる。
+If a `switch` branching on a Discriminated Union lacks `default: return assertNever(x)`, flag it. Without it, adding a new variant will not produce a compile error.
 
-### 7. 外部境界にZodバリデーションがあるか
+### 7. Is there Zod validation at external boundaries?
 
-APIハンドラ、DB結果の変換、設定ファイルの読み込みなど外部境界で、生のデータを型アサーションなしにドメイン型として扱っていないか確認する。
+At external boundaries such as API handlers, DB result mapping, and config file loading, check that raw data is not treated as domain types without validation.
 
-### 8. PIIフィールドにSensitiveラッパーがあるか
+### 8. Do PII fields have Sensitive wrappers?
 
-個人情報（氏名、メールアドレス、電話番号、診断情報など）を含むフィールドが `Sensitive<T>` でラップされているか確認する。特にログに出力される可能性のあるオブジェクトを重点的にチェックする。
+Check that fields containing personal information (name, email address, phone number, diagnostic information, etc.) are wrapped with `Sensitive<T>`. Pay particular attention to objects that may appear in logs.
 
-## 指摘の書き方
+## How to Write Findings
 
-各指摘には以下を含める:
+Each finding should include:
 
-1. **何が問題か**: 具体的なコードの場所
-2. **なぜ問題か**: 原則と、違反した場合のリスク
-3. **どう直すか**: 修正案のコード例
+1. **What the problem is**: the specific location in the code
+2. **Why it is a problem**: the principle and the risk of violating it
+3. **How to fix it**: a code example showing the corrected version
 
 ```
-### メソッド記法の使用
+### Use of method notation
 
 `src/repository/task-repository.ts:15`
 
-`save(task: Task): Promise<void>` はメソッド記法です。メソッド記法ではパラメータ型がbivariantになり、
-`save(task: DoingTask): Promise<void>` のような狭い型の実装が型チェックを通過します。
+`save(task: Task): Promise<void>` uses method notation. With method notation, parameter types become
+bivariant, so a narrower implementation such as `save(task: DoingTask): Promise<void>` will pass
+type checking.
 
-修正案:
+Suggested fix:
 \`\`\`typescript
 type TaskRepository = {
   save: (task: Task) => Promise<void>;
@@ -85,17 +86,17 @@ type TaskRepository = {
 \`\`\`
 ```
 
-## 重要度
+## Severity
 
-チェック項目には以下の重要度がある:
+Each checklist item has the following severity:
 
-| 重要度 | 項目 | 理由 |
-|--------|------|------|
-| High | `as` 型アサーション | ランタイムエラーの直接原因 |
-| High | PII未保護 | コンプライアンス違反リスク |
-| High | 外部境界のバリデーション不足 | ランタイムエラーの直接原因 |
-| Medium | class使用 | 拡張時の型安全性低下 |
-| Medium | throw使用 | エラーハンドリングの一貫性 |
-| Medium | assertNever不足 | 新バリアント追加時の見落とし |
-| Low | メソッド記法 | 特定条件下でのみ問題顕在化 |
-| Low | interface使用 | declaration merging事故は稀 |
+| Severity | Item | Reason |
+|----------|------|--------|
+| High | `as` type assertions | Direct cause of runtime errors |
+| High | Unprotected PII | Risk of compliance violations |
+| High | Missing validation at external boundaries | Direct cause of runtime errors |
+| Medium | Class usage | Reduced type safety when extended |
+| Medium | Use of throw | Consistency of error handling |
+| Medium | Missing assertNever | Overlooked cases when new variants are added |
+| Low | Method notation | Issue only manifests under specific conditions |
+| Low | Interface usage | Declaration merging accidents are rare |
